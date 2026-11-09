@@ -1,0 +1,257 @@
+{{ header }}{{ column_left }}
+<div id="content">
+  <div class="page-header">
+    <div class="container-fluid">
+      <div class="float-end">
+        <a href="{{ back }}" data-bs-toggle="tooltip" title="{{ button_back }}" class="btn btn-light"><i class="fa-solid fa-reply"></i></a>
+      </div>
+      <h1>{{ heading_audit }}</h1>
+      <ol class="breadcrumb">
+        {% for breadcrumb in breadcrumbs %}
+          <li class="breadcrumb-item"><a href="{{ breadcrumb.href }}">{{ breadcrumb.text }}</a></li>
+        {% endfor %}
+      </ol>
+      <div class="text-muted small">{{ text_version }} {{ version }}</div>
+    </div>
+  </div>
+
+  <div class="container-fluid">
+    {#
+      The localized config the script reads. It is inline and comes before the
+      markup so the object exists before any handler can run; the script itself
+      is enqueued on the document (header), which is why the two are separate.
+
+      `ajax` carries one fully-built URL per action. The user_token has to sit
+      before the route's action suffix, so the URLs are assembled here by
+      OpenCart's own Url library rather than pasted together in the browser.
+    #}
+    <script type="text/javascript">
+      window.optimasiAudit = {
+        ajax: {{ ajax|json_encode() }},
+        report_html: {{ report_html_url|json_encode() }},
+        consent_recorded: {{ consent_recorded ? 'true' : 'false' }},
+        report_previous: {{ report_previous|json_encode() }},
+        how_it_works_url: {{ how_it_works_url|json_encode() }}
+      };
+    </script>
+
+    <div class="card">
+      <div class="card-body optimasi-audit">
+        <p class="optimasi-lead">{{ text_lead }}</p>
+
+        <ol class="optimasi-steps">
+          {# ---- Step 1 -------------------------------------------------- #}
+          <li id="optimasi-step-1" class="optimasi-step is-active">
+            <div class="optimasi-step-head">
+              <span class="optimasi-step-num">1</span>
+              <div class="optimasi-step-title">
+                <h2>{{ step1_title }}</h2>
+                <p>{{ step1_desc }}</p>
+              </div>
+              <span class="optimasi-step-state"></span>
+            </div>
+            <div class="optimasi-step-actions">
+              <button type="button" id="optimasi-run-audit" class="btn btn-primary">{{ step1_button }}</button>
+            </div>
+            <div id="optimasi-result-1" class="optimasi-step-result"></div>
+          </li>
+
+          {# ---- Step 2 -------------------------------------------------- #}
+          <li id="optimasi-step-2" class="optimasi-step is-locked">
+            <div class="optimasi-step-head">
+              <span class="optimasi-step-num">2</span>
+              <div class="optimasi-step-title">
+                <h2>{{ step2_title }}</h2>
+                <p>{{ step2_desc }}</p>
+              </div>
+              <span class="optimasi-step-state"></span>
+            </div>
+            <div class="optimasi-step-actions">
+              <button type="button" id="optimasi-analyse-voice" class="btn btn-primary" disabled>{{ step2_button }}</button>
+            </div>
+            {#
+              The only step that ships product description text off the store, so
+              the only step that needs consent. Remembered once given, so it is
+              not re-asked on every run — and the send is refused server-side
+              without it, so unticking the box (or calling the action directly)
+              cannot bypass this.
+            #}
+            <p class="optimasi-consent">
+              <label for="optimasi-consent-send">
+                <input type="checkbox" id="optimasi-consent-send"{% if consent_recorded %} checked{% endif %} />
+                {{ step2_consent }}
+              </label>
+            </p>
+            <div id="optimasi-result-2" class="optimasi-step-result"></div>
+          </li>
+
+          {# ---- Step 3: the report itself ------------------------------- #}
+          <li id="optimasi-step-3" class="optimasi-step is-report is-locked">
+            <div class="optimasi-step-head">
+              <span class="optimasi-step-num">3</span>
+              <div class="optimasi-step-title">
+                <h2>{{ step3_title }}</h2>
+                <p>{{ step3_desc }}</p>
+              </div>
+              <span class="optimasi-step-state"></span>
+            </div>
+            {#
+              Provenance for a report from an EARLIER review. Hidden until the page knows
+              there is a stored one, and dated when it does — this step used to be
+              revealed on load with the stored document already rendered and marked
+              Ready, while steps 1 and 2 had not run. The document was real; what it
+              implied was not. The date comes from the server; a token written before
+              the date was stored says "an earlier review" instead of inventing one.
+            #}
+            <p id="optimasi-report-previous" class="optimasi-report-previous is-hidden">
+              <span id="optimasi-report-previous-text"></span>
+              <button type="button" id="optimasi-report-previous-show" class="btn btn-secondary">{{ report_previous_button }}</button>
+            </p>
+            <div class="optimasi-step-actions">
+              {#
+                ONE control, not two. Printing from this frame cannot work and never
+                could: window.print() is gated behind the sandbox's `allow-modals` flag
+                (which this frame does not have), and the frame is display:none until
+                the document lands — a hidden frame has no layout to paginate. The old
+                "Print / Save as PDF" therefore did nothing on click: the call did not
+                throw, so the catch-and-fall-back never ran and there was no error to
+                read. The document prints perfectly well from the browser's own Print
+                once it is in a tab, which is what this button opens.
+              #}
+              <button type="button" id="optimasi-report-open" class="btn btn-primary" disabled>{{ step3_open }}</button>
+            </div>
+            <div id="optimasi-report-status" class="optimasi-report-status" aria-live="polite"></div>
+            <iframe id="optimasi-report-frame" class="optimasi-report-frame" title="{{ step3_frame_title }}" sandbox="allow-same-origin" style="display:none;"></iframe>
+          </li>
+        </ol>
+
+        {#
+          The email card and the offer sit WITH the report they are about, so they
+          interrupt the steps between 3 and 4 rather than trailing off the bottom
+          of the page. The list is split in two so it can interrupt legally — an
+          <ol> may only contain <li> — and start="4" keeps step 4's position for
+          assistive technology (the visible numbers are the step-num spans).
+        #}
+        <div id="optimasi-report-extra" class="optimasi-report-extra is-hidden">
+          <div class="optimasi-email-card">
+            <h2>{{ text_email_heading }}</h2>
+            <p>{{ text_email_desc }}</p>
+            <p>{{ text_email_how }}</p>
+            <div class="optimasi-email-form">
+              <input type="email" id="optimasi-report-email" class="form-control" autocomplete="email" placeholder="{{ text_email_placeholder }}" />
+              <button type="button" id="optimasi-email-submit" class="btn btn-primary">{{ text_email_button }}</button>
+              <span id="optimasi-email-spinner" class="spinner"></span>
+            </div>
+            <p id="optimasi-email-message" class="optimasi-inline-message"></p>
+          </div>
+        </div>
+
+        <div id="optimasi-help" class="optimasi-help is-hidden">
+          <h2>{{ text_help_heading }}</h2>
+          <p class="optimasi-help-copy">{{ text_help_copy1 }}</p>
+          <p class="optimasi-help-copy">{{ text_help_copy2 }}</p>
+
+          {#
+            A <form> without a submit action: the request is made by the script, so
+            there is nothing to post and nothing to navigate to. Keeping it as a
+            form gives the radio group its grouping (a fieldset with a legend) and
+            makes Enter behave sanely.
+          #}
+          <form id="optimasi-contact-form" class="optimasi-contact-form" onsubmit="return false;">
+            <fieldset class="optimasi-contact-channels">
+              <legend>{{ text_help_legend }}</legend>
+              {% for channel in channels %}
+                <label class="optimasi-contact-opt">
+                  <input type="radio" name="optimasi_channel" value="{{ channel.value }}"{% if channel.checked %} checked{% endif %} />
+                  {{ channel.label }}
+                </label>
+              {% endfor %}
+            </fieldset>
+
+            <div id="optimasi-contact-number-wrap" class="optimasi-contact-field is-hidden">
+              <label for="optimasi-contact-number">{{ text_help_number }}</label>
+              <input type="tel" id="optimasi-contact-number" class="form-control" placeholder="{{ text_help_number_ph }}" autocomplete="tel" />
+            </div>
+
+            <div class="optimasi-contact-field">
+              <label for="optimasi-contact-email">{{ text_help_email }}</label>
+              <input type="email" id="optimasi-contact-email" class="form-control" autocomplete="email" placeholder="{{ text_email_placeholder }}" />
+            </div>
+
+            <div class="optimasi-contact-field">
+              <label for="optimasi-contact-role">{{ text_help_role }}</label>
+              <select id="optimasi-contact-role" class="form-select">
+                <option value="">{{ text_help_role_none }}</option>
+                {% for role in roles %}
+                  <option value="{{ role.value }}">{{ role.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <p class="optimasi-contact-submit">
+              <button type="button" id="optimasi-contact-submit" class="btn btn-primary">{{ text_help_submit }}</button>
+              <span id="optimasi-contact-spinner" class="spinner"></span>
+            </p>
+            <p id="optimasi-contact-message" class="optimasi-inline-message" aria-live="polite"></p>
+            <p class="optimasi-contact-privacy">{{ help_privacy_html }}</p>
+          </form>
+        </div>
+
+        {# ---- Step 4: an outbound link, no request ---------------------- #}
+        <ol class="optimasi-steps" start="4">
+          <li id="optimasi-step-4" class="optimasi-step is-locked">
+            <div class="optimasi-step-head">
+              <span class="optimasi-step-num">4</span>
+              <div class="optimasi-step-title">
+                <h2>{{ step4_title }}</h2>
+                <p>{{ step4_desc }}</p>
+              </div>
+              <span class="optimasi-step-state"></span>
+            </div>
+            <div class="optimasi-step-actions">
+              <button type="button" id="optimasi-how-it-works" class="btn btn-primary" disabled>{{ step4_button }}</button>
+            </div>
+            <div id="optimasi-result-4" class="optimasi-step-result"></div>
+          </li>
+        </ol>
+
+        {#
+          The endpoint. Visible but folded away: it ships with a working default,
+          so this is a support/agency tool rather than something a merchant needs —
+          and a wrong value in it silently breaks steps 2 and 3, which is exactly
+          why it is not in the main flow.
+        #}
+        <details class="optimasi-advanced">
+          <summary>{{ text_settings_heading }}</summary>
+            <p class="description">{{ settings_help_text }}</p>
+          <div class="optimasi-email-form">
+            <input type="url" id="optimasi-api-url" class="form-control" placeholder="{{ default_api_url }}" value="{{ api_url|e }}" />
+            <button type="button" id="optimasi-api-url-save" class="btn btn-secondary">{{ button_save_endpoint }}</button>
+            <span id="optimasi-api-url-spinner" class="spinner"></span>
+          </div>
+          <p id="optimasi-api-url-message" class="optimasi-inline-message"></p>
+        </details>
+
+        {#
+          A one-line health read. The three things that decide whether step 2 works
+          are invisible from here otherwise, and "why does nothing happen" is the
+          question this page gets asked.
+        #}
+        <div class="optimasi-health">
+          <h2>{{ text_health_heading }}</h2>
+          <dl>
+            <dt>{{ text_health_endpoint }}</dt>
+            <dd>
+              {% if health.endpoint_is_default %}{{ text_health_default }}{% else %}<code>{{ health.endpoint|e }}</code>{% endif %}
+            </dd>
+            <dt>{{ text_health_consent }}</dt>
+            <dd>{{ health.consent ? text_health_consent_yes : text_health_consent_no }}</dd>
+            <dt>{{ text_health_token }}</dt>
+            <dd>{{ health.token ? text_health_token_yes : text_health_token_no }}</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{ footer }}

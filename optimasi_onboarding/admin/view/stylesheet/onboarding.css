@@ -1,0 +1,1042 @@
+/* ============================================================
+   Report shell — design tokens, sectioned layout, sticky TOC
+   Tokens live on :root (plugin-prefixed) so both step reports — which do not
+   all share the .optimasi-report wrapper — resolve them identically.
+   ============================================================ */
+:root {
+    --opt-brand: #105142;
+    --opt-brand-dark: #0b3f34;
+    --opt-brand-tint: #f0f6f4;
+    --opt-ink: #101820;
+    --opt-muted: #565f66;
+    --opt-line: #e4e8e6;
+    /* Stronger rule for section dividers — the light line reads as a smudge. */
+    --opt-line-strong: #d3dbd6;
+    --opt-wash: #f5f8f7;
+    --opt-cream: #f9f8f5;
+    --opt-ok: #1e8e3e;
+    --opt-warn: #b7791f;
+    --opt-bad: #c0392b;
+}
+
+/* ---- Reading size floor: 14px ----
+   The floor is set ONCE, on the page wrapper, so the component rules below only
+   ever go UP from it and a new element cannot reintroduce a smaller size by
+   accident. OpenCart's own admin stylesheet has no opinion about a module's
+   body copy, so this is also what stops the page inheriting whatever the theme
+   happens to set.
+
+   `.optimasi-audit` is on this extension's page wrapper and the file is only
+   loaded on that page, so nothing else in the admin is affected. */
+.optimasi-audit { font-size: 14px; }
+.optimasi-audit p,
+.optimasi-audit li,
+.optimasi-audit dt,
+.optimasi-audit dd,
+.optimasi-audit td,
+.optimasi-audit th,
+.optimasi-audit label,
+.optimasi-audit legend,
+.optimasi-audit summary,
+.optimasi-audit input,
+.optimasi-audit select,
+.optimasi-audit textarea,
+.optimasi-audit .btn,
+.optimasi-audit .description { font-size: 14px; }
+
+.optimasi-report {
+    margin-top: 25px;
+    background: #ffffff;
+    border: 1px solid var(--opt-line);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 32, 0.05), 0 10px 28px rgba(16, 24, 32, 0.05);
+    padding: 0 30px 30px;
+}
+@media (max-width: 782px) { .optimasi-report { padding: 0 16px 20px; } }
+
+/* Sticky section nav — jump to any part of the report */
+.optimasi-report-toc {
+    position: sticky;
+    top: 32px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 0 -30px 0;
+    padding: 12px 30px;
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--opt-line);
+    border-radius: 14px 14px 0 0;
+}
+.optimasi-toc-label {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--opt-muted);
+    white-space: nowrap;
+}
+.optimasi-toc-links { display: flex; gap: 6px; flex-wrap: wrap; }
+.optimasi-toc-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px 5px 7px;
+    border: 1px solid var(--opt-line);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--opt-muted);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.optimasi-toc-link:hover,
+.optimasi-toc-link:focus-visible {
+    background: var(--opt-brand-tint);
+    border-color: #b9d4cb;
+    color: var(--opt-brand-dark);
+    outline: none;
+}
+.optimasi-toc-link.is-active { background: var(--opt-brand); border-color: var(--opt-brand); color: #ffffff; }
+.optimasi-toc-num {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--opt-wash);
+    color: var(--opt-muted);
+    font-size: 14px;
+    font-weight: 700;
+}
+.optimasi-toc-link.is-active .optimasi-toc-num { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
+@media (max-width: 782px) {
+    .optimasi-report-toc { top: 46px; margin: 0 -16px; padding: 10px 16px; }
+    .optimasi-toc-links { width: 100%; }
+}
+
+/* Sections — the unit of traversal (eyebrow + h4 + lede + body).
+   Every section carries a full-width divider above it plus generous padding, so
+   the report reads as a stack of peers rather than one continuous document. */
+.optimasi-report-section {
+    padding: 34px 0;
+    border-top: 1px solid var(--opt-line-strong);
+    scroll-margin-top: 100px;
+}
+/* The section directly under the header keeps its own rule — that rule IS the
+   divider below the header (the header no longer draws one). */
+.optimasi-report-header + .optimasi-report-section { padding-top: 32px; }
+.optimasi-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--opt-brand);
+}
+.optimasi-eyebrow-num {
+    display: inline-grid;
+    place-items: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 5px;
+    background: var(--opt-brand-tint);
+    color: var(--opt-brand-dark);
+    font-size: 14px;
+    letter-spacing: 0;
+}
+.optimasi-section-title {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--opt-ink);
+    letter-spacing: -0.005em;
+    line-height: 1.3;
+}
+.optimasi-section-lede {
+    margin: 0 0 18px;
+    color: var(--opt-muted);
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 68ch;
+}
+
+/* Header & Scoring Panel */
+/* Base card — used on its own by the Step-2 report (no .optimasi-report shell). */
+.optimasi-report-dashboard {
+    margin-top: 25px;
+    background: #ffffff;
+    border: 1px solid var(--opt-line);
+    border-radius: 14px;
+    padding: 0 30px 30px;
+    box-shadow: 0 1px 3px rgba(16, 24, 32, 0.05), 0 10px 28px rgba(16, 24, 32, 0.05);
+}
+.optimasi-step-result .optimasi-report-dashboard { margin-top: 16px; }
+/* Inside the Step-1 shell the .optimasi-report already provides the card. */
+.optimasi-report .optimasi-report-dashboard {
+    margin-top: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+.optimasi-report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    /* No rule of its own. The FIRST block under the header draws the divider —
+       a header rule plus that block's rule rendered as two lines (the doubled
+       divider on the Brand voice step). The padding below gives the rule
+       breathing room on both sides. */
+    border-bottom: 0;
+    padding-top: 26px;
+    padding-bottom: 34px;
+    margin-bottom: 0;
+}
+.optimasi-report-header-main { min-width: 0; }
+.optimasi-report-title {
+    margin: 0 0 6px;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--opt-ink);
+}
+.optimasi-report-meta { margin: 0; color: var(--opt-muted); font-size: 14px; line-height: 1.6; max-width: 62ch; }
+.optimasi-report-meta strong { color: var(--opt-ink); }
+
+/* Score ring */
+.optimasi-score-block { text-align: center; flex: 0 0 auto; }
+.optimasi-score-badge {
+    --pct: 0;
+    position: relative;
+    width: 112px;
+    height: 112px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: conic-gradient(currentColor calc(var(--pct) * 1%), #e9edeb 0);
+    border: 0;
+    padding: 0;
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+}
+.optimasi-score-badge::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(16, 24, 32, 0.06);
+}
+.optimasi-score-value { position: relative; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.optimasi-score-value small {
+    display: block;
+    margin-top: 3px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--opt-muted);
+}
+.optimasi-score-label {
+    margin: 9px 0 0;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--opt-muted);
+}
+
+/* Dynamic Score Color States (ring color via currentColor) */
+.optimasi-score-critical { color: #c0392b; }
+.optimasi-score-warning { color: #b7791f; }
+.optimasi-score-good { color: #1e8e3e; }
+
+/* Grid Diagnostics */
+/* Interactive Progress Mechanics */
+.optimasi-progress-bar {
+    background: #f0f0f1;
+    height: 16px;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+#optimasi-progress-fill {
+    background: var(--opt-brand);
+    height: 100%;
+    width: 0%;
+    transition: width 0.4s cubic-bezier(0.1, 0.8, 0.25, 1);
+}
+
+/* Loader */
+.optimasi-audit-loader-wrap {
+    margin-top: 20px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+}
+
+/* Factual / weighted feature rows */
+.optimasi-coverage-list { margin-bottom: 0; }
+.optimasi-feature-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--opt-line);
+}
+.optimasi-feature-row:last-child { border-bottom: 0; }
+.optimasi-feature-label { min-width: 190px; font-size: 14px; font-weight: 600; color: var(--opt-ink); }
+.optimasi-coverage-bar {
+    flex: 1;
+    background: #edf0ef;
+    height: 10px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.optimasi-coverage-fill { display: block; height: 100%; background: #565f66; transition: width 0.4s cubic-bezier(0.1, 0.8, 0.25, 1); }
+.optimasi-feature-row.optimasi-ok .optimasi-coverage-fill { background: var(--opt-ok); }
+.optimasi-feature-row.optimasi-warn .optimasi-coverage-fill { background: var(--opt-warn); }
+.optimasi-feature-row.optimasi-bad .optimasi-coverage-fill { background: var(--opt-bad); }
+.optimasi-feature-count { min-width: 92px; text-align: right; color: var(--opt-muted); line-height: 1.3; }
+.optimasi-feature-count b { display: block; font-size: 14.5px; font-weight: 700; color: var(--opt-ink); }
+.optimasi-feature-count small { font-size: 14px; color: var(--opt-muted); }
+
+/* Catalog health (step 1 diagnostics) — body only; the section supplies the title */
+.optimasi-catalog-health { margin: 0; }
+.optimasi-health-block { margin-top: 4px; }
+.optimasi-catalog-health h5 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--opt-muted);
+}
+/* Website authority — a NORMAL section so it takes the same divider as its
+   siblings. The tint lives in an inner band that bleeds to the card edges and
+   pads back in, so the eyebrow still aligns with sections 01–03 while the rules
+   above and below sit on white where they are clearly visible. */
+.optimasi-authority { scroll-margin-top: 100px; }
+.optimasi-authority-band {
+    position: relative;
+    margin: 0 -30px;
+    padding: 26px 30px 28px;
+    background: var(--opt-brand-tint);
+}
+.optimasi-authority-band::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--opt-brand);
+}
+.optimasi-authority .optimasi-section-lede { margin-bottom: 16px; }
+.optimasi-authority.optimasi-ok .optimasi-authority-band { background: #f2f9f3; }
+.optimasi-authority.optimasi-ok .optimasi-authority-band::before { background: var(--opt-ok); }
+.optimasi-authority.optimasi-warn .optimasi-authority-band { background: #fdf8ee; }
+.optimasi-authority.optimasi-warn .optimasi-authority-band::before { background: var(--opt-warn); }
+.optimasi-authority.optimasi-bad .optimasi-authority-band { background: #fdf3f2; }
+.optimasi-authority.optimasi-bad .optimasi-authority-band::before { background: var(--opt-bad); }
+@media (max-width: 782px) {
+    .optimasi-authority-band { margin: 0 -16px; padding: 24px 16px 26px; }
+}
+.optimasi-authority-measured { margin: 0 0 6px; font-weight: 700; font-size: 14px; color: var(--opt-ink); }
+.optimasi-authority-note { margin: 0; color: #3f474d; line-height: 1.6; font-size: 14px; }
+.optimasi-authority-detail:empty { display: none; }
+.optimasi-authority-ideal { margin: 12px 0 0; padding: 10px 12px; background: #f4f8f6; border-radius: 6px; color: #1d2327; line-height: 1.55; }
+.optimasi-authority-types { margin: 10px 0 0; }
+.optimasi-authority-types-head { margin: 0 0 4px; font-weight: 600; color: #1d2327; }
+.optimasi-authority-types ul { margin: 0; padding-left: 20px; list-style: disc; }
+.optimasi-authority-types li { margin: 0 0 3px; color: #50575e; line-height: 1.5; }
+.optimasi-authority-stat { margin: 8px 0 0; color: #50575e; line-height: 1.5; }
+.optimasi-health-chips {
+    display: grid;
+    /* 130px keeps all five chips on one row at report width, then reflows. */
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+    margin: 0 0 20px;
+}
+.optimasi-health-chip {
+    background: var(--opt-wash);
+    border: 1px solid var(--opt-line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--opt-muted);
+    line-height: 1.4;
+}
+.optimasi-health-chip b {
+    display: block;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--opt-ink);
+    margin: 0 0 2px;
+}
+.optimasi-health-chip.is-bad b { color: var(--opt-bad); }
+.optimasi-health-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 782px) { .optimasi-health-cols { grid-template-columns: 1fr; } }
+.optimasi-worst-list { margin: 4px 0 0; padding-left: 0; list-style: none; }
+.optimasi-worst-list li { margin: 5px 0; font-size: 14px; }
+.optimasi-worst-list a { color: var(--opt-brand-dark); text-decoration: none; font-weight: 600; }
+.optimasi-worst-list a:hover { text-decoration: underline; }
+.optimasi-worst-missing, .optimasi-cat-pct { color: #777; font-weight: 400; }
+.optimasi-stage2-note { background: #f4faf4; border-left: 3px solid #46b450; padding: 8px 12px; font-size: 14px; color: #333; margin-top: 10px; }
+
+/* Evidence table — collapsible section with a clear affordance */
+.optimasi-evidence { margin-top: 0; }
+.optimasi-evidence > summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 12px 14px;
+    background: var(--opt-wash);
+    border: 1px solid var(--opt-line);
+    border-radius: 10px;
+    color: var(--opt-ink);
+    font-size: 14px;
+    font-weight: 600;
+    list-style: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.optimasi-evidence > summary::-webkit-details-marker { display: none; }
+.optimasi-evidence > summary::before {
+    content: "\25B8";
+    color: var(--opt-brand);
+    font-size: 14px;
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+.optimasi-evidence[open] > summary::before { transform: rotate(90deg); }
+.optimasi-evidence > summary:hover,
+.optimasi-evidence > summary:focus-visible { background: var(--opt-brand-tint); border-color: #b9d4cb; outline: none; }
+.optimasi-evidence-legend {
+    font-size: 14px; color: var(--opt-muted); background: #ffffff;
+    border: 1px solid var(--opt-line); border-radius: 8px; padding: 8px 12px; margin: 12px 0 8px;
+    line-height: 1.6;
+}
+/* Evidence table */
+.optimasi-evidence-table thead th {
+    background: #eef2f0;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--opt-muted);
+}
+.optimasi-evidence-table tbody tr:nth-child(even) { background: #fafbfb; }
+.optimasi-evidence-table tbody tr:hover { background: var(--opt-brand-tint); }
+.optimasi-evidence-table th, .optimasi-evidence-table td { border-color: var(--opt-line); }
+.optimasi-evidence-pager {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin: 10px 0 6px; flex-wrap: wrap;
+}
+.optimasi-evidence-pager .optimasi-evidence-count { font-size: 14px; color: var(--opt-muted); }
+.optimasi-evidence-pager .button { margin: 0; }
+.optimasi-evidence-scroll { overflow-x: auto; margin-top: 4px; }
+.optimasi-evidence-table { border-collapse: collapse; width: 100%; background: #fff; }
+.optimasi-evidence-table th, .optimasi-evidence-table td {
+    border: 1px solid #e2e4e7;
+    padding: 6px 10px;
+    text-align: left;
+    font-size: 14px;
+}
+.optimasi-evidence-table thead th { background: #f6f7f7; cursor: help; }
+.optimasi-evidence-yes { color: #46b450; font-weight: 700; }
+.optimasi-mark { display: inline-block; margin-right: 4px; font-weight: 700; }
+.optimasi-mark-yes { color: #46b450; }
+.optimasi-mark-no { color: #d63638; }
+.optimasi-mark-cell { white-space: nowrap; }
+
+/* Advanced: per-site review service endpoint (admin-only page) */
+.optimasi-advanced { margin-top: 18px; max-width: 720px; }
+.optimasi-advanced details { border: 1px dashed #c3c4c7; border-radius: 6px; padding: 10px 14px; }
+.optimasi-advanced summary { cursor: pointer; color: #50575e; font-weight: 600; }
+.optimasi-advanced .optimasi-email-form { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.optimasi-advanced .optimasi-email-form input { flex: 1 1 auto; min-width: 260px; }
+.optimasi-advanced .description { margin: 6px 0 0; }
+
+/* Stage 2 sections — same divider + whitespace rhythm as the Step-1 sections */
+.optimasi-stage2-section { margin: 34px 0; padding-top: 26px; border-top: 1px solid var(--opt-line-strong); }
+/* First block under the header: the header already gives it 34px, so no extra
+   margin — otherwise the header rule and this rule both rendered (double line). */
+.optimasi-report-header + .optimasi-stage2-section { margin-top: 0; }
+.optimasi-stage2-section h3 { margin: 0 0 10px 0; color: var(--opt-ink); }
+
+.optimasi-voice-meter { background: #f0f0f1; height: 14px; border-radius: 7px; overflow: hidden; max-width: 420px; margin-bottom: 10px; }
+.optimasi-voice-fill { display: block; height: 100%; }
+.optimasi-voice-consistent { background: #46b450; }
+.optimasi-voice-inconsistent { background: #dba617; }
+.optimasi-voice-absent { background: #dc3232; }
+.optimasi-voice-pill {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    color: #fff; font-size: 14px; font-weight: 700; text-transform: capitalize;
+}
+
+.optimasi-ai-good { color: #46b450; font-weight: 600; }
+.optimasi-ai-weak { color: #dba617; font-weight: 600; }
+.optimasi-ai-missing { color: #dc3232; font-weight: 600; }
+
+.hidden { display: none !important; }
+
+/* ---- 3-step review flow ---- */
+.optimasi-lead { max-width: 860px; color: #50575e; margin-top: 8px; }
+.optimasi-steps { list-style: none; margin: 22px 0 30px; padding: 0; }
+.optimasi-step {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    margin: 0 0 18px 0;
+    padding: 18px 22px 20px 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    max-width: 860px;
+    transition: opacity 0.2s ease, background 0.2s ease;
+}
+.optimasi-step.is-locked { opacity: 0.55; background: #fafafa; }
+.optimasi-step.is-running { border-color: var(--opt-brand); }
+.optimasi-step-head { display: flex; align-items: flex-start; gap: 14px; }
+.optimasi-step-num {
+    flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%;
+    background: var(--opt-brand); color: #ffffff; font-weight: 700; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1; margin-top: 2px;
+}
+.optimasi-step.is-locked .optimasi-step-num { background: #c3c4c7; color: #fff; }
+.optimasi-step.is-done .optimasi-step-num { background: #46b450; }
+.optimasi-step-title { flex: 1; }
+.optimasi-step-title h2 { margin: 0 0 4px 0; color: #1d2327; font-size: 18px; line-height: 1.3; }
+.optimasi-step-title p { margin: 0; color: #50575e; font-size: 14px; line-height: 1.5; }
+.optimasi-step-state { color: #50575e; font-size: 14px; padding-top: 8px; white-space: nowrap; }
+.optimasi-step.is-done .optimasi-step-state { color: #46b450; font-weight: 600; }
+.optimasi-step.is-running .optimasi-step-state { color: var(--opt-brand); font-style: italic; }
+.optimasi-step-actions { margin: 14px 0 0 48px; display: flex; align-items: center; gap: 10px; }
+.optimasi-step-result .optimasi-report { margin-top: 16px; }
+
+/* Narrative summary + next-step hint shown after a step completes */
+.optimasi-analysis-summary {
+    background: var(--opt-wash);
+    border: 1px solid var(--opt-line);
+    border-radius: 12px;
+    padding: 24px 26px;
+    margin: 0;
+}
+.optimasi-analysis-summary p { margin: 0 0 8px 0; color: #3c434a; }
+.optimasi-analysis-summary p:last-child { margin-bottom: 0; }
+.optimasi-analysis-summary strong.ok { color: #46b450; }
+.optimasi-analysis-summary strong.warn { color: #dba617; }
+.optimasi-analysis-summary strong.bad { color: #dc3232; }
+/* Prominent status block for the Step-1 explainer call (spinner / error + retry). */
+.optimasi-explainers-status {
+    display: flex; align-items: flex-start; gap: 12px;
+    margin-top: 14px; padding: 14px 16px; border-radius: 8px;
+    background: #f0f6f4; border: 1px solid #cfe6e0; text-align: left;
+}
+.optimasi-explainers-status.is-error { background: #fcf0f1; border-color: #f1adad; }
+.optimasi-status-spinner {
+    flex: 0 0 auto; width: 20px; height: 20px; margin-top: 2px;
+    border: 3px solid #cfe6e0; border-top-color: #105142; border-radius: 50%;
+    animation: optimasi-spin 0.9s linear infinite;
+}
+@keyframes optimasi-spin { to { transform: rotate(360deg); } }
+.optimasi-status-title { margin: 0 0 3px; font-size: 15px; font-weight: 600; color: #105142; line-height: 1.3; }
+.optimasi-explainers-status.is-error .optimasi-status-title { color: #b32d2e; }
+.optimasi-status-sub { margin: 0; font-size: 14px; color: #3c434a; line-height: 1.45; }
+.optimasi-retry-btn {
+    margin-top: 10px; display: inline-block; background: #105142; color: #fff !important;
+    border: 0; border-radius: 4px; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.optimasi-retry-btn:hover { background: #0b3f34; }
+.optimasi-issue-stat + .optimasi-issue-stat { margin-top: 4px; }
+/* The overall read ("6 content areas need the most work…") is the thesis of the
+   section — a strong statement, so it is set as a lead, not as body copy. */
+.optimasi-summary-overall {
+    position: relative;
+    margin: 0 0 22px;
+    padding: 4px 0 20px 18px;
+    border-bottom: 1px solid var(--opt-line-strong);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: -0.012em;
+    color: var(--opt-ink);
+}
+.optimasi-summary-overall::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 24px;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--opt-brand);
+}
+
+/* Per-block "What this means" issue cards (server explainers) */
+.optimasi-issue-card {
+    background: #ffffff;
+    border: 1px solid var(--opt-line);
+    border-left: 4px solid var(--opt-brand);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 16px;
+    margin: 10px 0;
+    box-shadow: 0 1px 2px rgba(16, 24, 32, 0.04);
+}
+.optimasi-issue-card.is-medium { border-left-color: var(--opt-warn); }
+/* Six-step severity scale — the two-bucket version made every card read red.
+   Steps: under 2 / 2–9 / 10–29 / 30–49 / 50–79 / 80+%, with the last two
+   matching the server's WEAK_PCT (50) / STRONG_PCT (80) banding. */
+.optimasi-issue-card.is-critical { border-left-color: #b32318; }
+.optimasi-issue-card.is-severe { border-left-color: #d4552a; }
+.optimasi-issue-card.is-weak { border-left-color: #e07d10; }
+.optimasi-issue-card.is-fair { border-left-color: #b7791f; }
+.optimasi-issue-card.is-good { border-left-color: #1f6f8b; }
+.optimasi-issue-card.is-strong { border-left-color: #1e8e3e; }
+/* Status badge — colour is never the only signal (WCAG 1.4.1). */
+.optimasi-sev-badge {
+    display: inline-block;
+    margin-left: 9px;
+    padding: 2px 9px 3px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: 1px;
+}
+.optimasi-sev-badge.optimasi-sev-critical { background: #f7dcda; color: #8c1a12; }
+.optimasi-sev-badge.optimasi-sev-severe { background: #fce6da; color: #8f3618; }
+.optimasi-sev-badge.optimasi-sev-weak { background: #fdead2; color: #8a4304; }
+.optimasi-sev-badge.optimasi-sev-fair { background: #fbf3cf; color: #75600a; }
+.optimasi-sev-badge.optimasi-sev-good { background: #dcecf3; color: #15536a; }
+.optimasi-sev-badge.optimasi-sev-strong { background: #dcf0e2; color: #14662f; }
+/* Colour legend above the cards. */
+.optimasi-sev-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    margin: -4px 0 18px;
+    font-size: 14px;
+    color: var(--opt-muted);
+}
+.optimasi-sev-legend-label {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--opt-muted);
+    margin-right: 3px;
+}
+.optimasi-sev-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px 3px 7px;
+    background: #ffffff;
+    border: 1px solid var(--opt-line);
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #3f474d;
+}
+.optimasi-sev-dot { width: 8px; height: 8px; border-radius: 50%; background: #9aa3a8; }
+.optimasi-sev-chip.optimasi-sev-critical .optimasi-sev-dot { background: #b32318; }
+.optimasi-sev-chip.optimasi-sev-severe .optimasi-sev-dot { background: #d4552a; }
+.optimasi-sev-chip.optimasi-sev-weak .optimasi-sev-dot { background: #e07d10; }
+.optimasi-sev-chip.optimasi-sev-fair .optimasi-sev-dot { background: #b7791f; }
+.optimasi-sev-chip.optimasi-sev-good .optimasi-sev-dot { background: #1f6f8b; }
+.optimasi-sev-chip.optimasi-sev-strong .optimasi-sev-dot { background: #1e8e3e; }
+.optimasi-sev-range { font-weight: 400; color: var(--opt-muted); }
+.optimasi-issue-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.optimasi-issue-label { font-weight: 700; color: #1d2327; font-size: 14px; }
+.optimasi-issue-count { color: #646970; font-size: 14px; white-space: nowrap; }
+.optimasi-issue-why { margin: 0 0 8px 0; color: #3c434a; font-size: 14px; line-height: 1.55; }
+.optimasi-issue-stat {
+    margin: 0 0 8px 0;
+    color: #50575e;
+    font-size: 14px;
+    line-height: 1.5;
+    background: #f6f7f7;
+    border-radius: 4px;
+    padding: 8px 10px;
+}
+.optimasi-benchmark-tag {
+    display: inline-block;
+    background: #e7f0fa;
+    color: var(--opt-brand);
+    border-radius: 3px;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2px 7px;
+    margin-right: 6px;
+}
+.optimasi-issue-fix { margin: 0; color: #1d2327; font-size: 14px; line-height: 1.5; }
+.optimasi-issue-strong { margin: 12px 0 0 0; }
+.optimasi-issue-strong-head { font-weight: 700; color: #46b450; margin: 0 0 4px 0; }
+.optimasi-issue-strong ul { margin: 0 0 0 18px; padding: 0; }
+.optimasi-issue-strong li { color: #3c434a; font-size: 14px; line-height: 1.6; }
+
+/* Step-2 brand-voice insight card (measured read + why + stat + path) */
+.optimasi-voice-insight {
+    background: #ffffff;
+    border: 1px solid #dcdcde;
+    border-left: 4px solid var(--opt-brand);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 14px;
+    margin: 10px 0 0 0;
+}
+.optimasi-voice-measured { font-weight: 700; color: #1d2327; margin: 0 0 6px 0; font-size: 14px; }
+.optimasi-voice-why { margin: 0 0 8px 0; color: #3c434a; font-size: 14px; line-height: 1.55; }
+.optimasi-voice-path { margin: 0; color: #1d2327; font-size: 14px; line-height: 1.5; }
+.optimasi-voice-insight .optimasi-issue-stat { margin: 0 0 8px 0; }
+.optimasi-ai-explainer {
+    background: #f6f7f7;
+    border-radius: 4px;
+    padding: 8px 10px;
+    color: #50575e;
+    font-size: 14px;
+    line-height: 1.55;
+}
+.optimasi-ai-explainer strong { color: #1d2327; }
+.optimasi-catalog-insight {
+    background: #f4faf4;
+    border-left: 3px solid #46b450;
+    border-radius: 0 6px 6px 0;
+    padding: 10px 12px;
+    margin: 8px 0;
+}
+.optimasi-catalog-insight .optimasi-voice-measured { color: #1d2327; }
+.optimasi-next-hint {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--opt-brand-tint);
+    border: 1px dashed #9dc4b7;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 20px 0 4px 0;
+    color: var(--opt-brand-dark);
+}
+.optimasi-next-hint strong { color: var(--opt-brand-dark); }
+.optimasi-next-hint .dashicons, .optimasi-next-hint .arrow { font-weight: 700; }
+
+/* Plain-language "Audit findings" — the closing pitch. Presented as a hero
+   panel in the Optimasi brand palette with a serif headline, so the read lands
+   with the weight of a recommendation rather than a footnote. */
+.optimasi-findings {
+    position: relative;
+    margin: 34px 0 4px;
+    padding: 30px 32px 32px;
+    border-radius: 14px;
+    background:
+        radial-gradient(130% 150% at 100% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 58%),
+        linear-gradient(140deg, #14654f 0%, #105142 46%, #0b3f34 100%);
+    box-shadow: 0 16px 36px rgba(11, 63, 52, 0.26);
+    color: var(--opt-cream);
+    overflow: hidden;
+}
+.optimasi-findings::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #d9b26a 0%, #f0d9a8 46%, rgba(240, 217, 168, 0) 100%);
+}
+.optimasi-findings-kicker {
+    margin: 0 0 7px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #9fd7c3;
+}
+.optimasi-findings h3 {
+    margin: 0 0 20px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(249, 248, 245, 0.2);
+    font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.14;
+    letter-spacing: -0.01em;
+    color: var(--opt-cream);
+}
+.optimasi-findings p { margin: 0 0 16px; color: #e7f0ed; font-size: 16px; line-height: 1.78; }
+.optimasi-findings p:last-child { margin-bottom: 0; }
+.optimasi-findings .description { color: #cfe3dc; font-size: 14.5px; }
+.optimasi-findings ul.optimasi-findings-list {
+    list-style: none;
+    margin: 4px 0 20px;
+    padding: 0;
+}
+.optimasi-findings ul.optimasi-findings-list li {
+    position: relative;
+    margin: 0 0 14px;
+    padding: 0 0 14px 30px;
+    color: #e7f0ed;
+    font-size: 15.5px;
+    line-height: 1.75;
+    border-bottom: 1px solid rgba(249, 248, 245, 0.12);
+}
+.optimasi-findings ul.optimasi-findings-list li:last-child {
+    border-bottom: 0;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.optimasi-findings ul.optimasi-findings-list li::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d9b26a;
+    box-shadow: 0 0 0 3px rgba(217, 178, 106, 0.24);
+}
+.optimasi-findings-loader { display: flex; align-items: center; gap: 10px; color: #cfe3dc; font-size: 14px; }
+.optimasi-findings-loader .spinner { float: none; margin: 0; }
+.optimasi-findings-loader .spinner::before { color: #cfe3dc; }
+@media (max-width: 782px) {
+    .optimasi-findings { padding: 26px 18px 28px; }
+    .optimasi-findings h3 { font-size: 26px; }
+}
+/* ---- End-of-flow extras: email report + flush ---- */
+/* The card is sandwiched between two step cards, so it takes a step's outer
+   width (860px content + 2×22px padding + 2×1px border) rather than sitting
+   46px narrower than its neighbours. */
+.optimasi-report-extra { max-width: calc(860px + 2 * 22px + 2 * 1px); }
+.optimasi-report-extra.is-hidden { display: none !important; }
+.optimasi-email-card {
+    background: #ffffff;
+    border: 1px solid #ccd0d4;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 22px 0 14px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.optimasi-email-card h2 { margin: 0 0 6px 0; color: #1d2327; font-size: 18px; }
+.optimasi-email-card p { margin: 0 0 12px 0; color: #50575e; }
+.optimasi-email-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.optimasi-email-form input[type="email"] { min-width: 260px; }
+.optimasi-email-form .button { margin: 0; }
+.optimasi-email-form .spinner { float: none; margin: 0; vertical-align: middle; }
+.optimasi-inline-message { display: block; margin: 8px 0 0 0; font-weight: 600; color: #46b450; min-height: 1.2em; }
+.optimasi-inline-message.is-error { color: #b32d2e; }
+
+/* ---- The offer: how Optimasi can help + preferred contact channel ----
+   Sits between the report (step 3) and the example pages (step 4). It takes an
+   outer width matching a step card so the column reads as one flow, and carries
+   the brand accent so it is visibly the next thing to do rather than another
+   block of report. */
+.optimasi-help {
+    max-width: calc(860px + 2 * 22px + 2 * 1px);
+    margin: 22px 0 14px 0;
+    padding: 20px 24px 18px;
+    background: #ffffff;
+    border: 1px solid #ccd0d4;
+    border-left: 4px solid #105142;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.optimasi-help.is-hidden { display: none !important; }
+.optimasi-help h2 { margin: 0 0 10px 0; color: #1d2327; font-size: 18px; }
+.optimasi-help-copy { margin: 0 0 10px 0; color: #50575e; max-width: 78ch; }
+.optimasi-contact-form { margin-top: 18px; padding-top: 16px; border-top: 1px solid #e2e4e7; }
+.optimasi-contact-channels { max-width: 440px; margin: 0 0 14px 0; padding: 0; border: 0; }
+.optimasi-contact-channels legend { margin-bottom: 8px; padding: 0; color: #1d2327; font-weight: 600; font-size: 14px; }
+.optimasi-contact-opt {
+    display: block;
+    margin: 0 0 6px 0;
+    padding: 9px 12px;
+    background: #fbfbfc;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.optimasi-contact-opt:hover { border-color: #105142; }
+.optimasi-contact-opt input { margin-right: 8px; }
+.optimasi-contact-field { max-width: 440px; margin: 0 0 12px 0; }
+.optimasi-contact-field.is-hidden { display: none; }
+.optimasi-contact-field label { display: block; margin-bottom: 4px; color: #50575e; font-size: 14px; }
+.optimasi-contact-field input, .optimasi-contact-field select { width: 100%; }
+.optimasi-contact-submit { display: flex; align-items: center; gap: 10px; margin: 16px 0 0 0; }
+.optimasi-contact-submit .spinner { float: none; margin: 0; }
+.optimasi-contact-privacy { margin: 10px 0 0 0; color: #787c82; font-size: 14px; }
+
+/* Consent row on the brand-voice step (WP.org guideline 7). Indented to line
+   up with that step's action button, and full width on small screens. */
+.optimasi-consent { margin: 12px 0 0 48px; max-width: 640px; }
+.optimasi-consent label { display: flex; align-items: flex-start; gap: 8px; color: #50575e; font-size: 14px; line-height: 1.5; }
+.optimasi-consent input { margin-top: 3px; flex: 0 0 auto; }
+
+@media (max-width: 782px) {
+    .optimasi-help { padding: 16px; }
+    .optimasi-consent { margin-left: 0; }
+}
+
+/* ---- Step 3: the 4-page Sales-Ready report (server-rendered document) ----
+   The report itself is a standalone A4 document rendered by Optimasi's
+   servers; this step only frames it and offers Print / Open in a new tab.
+   `.is-report` on the step is a hook only — the step keeps the same width as
+   the others, and the frame bleeds to the step's edges so the 794px A4 page
+   fits inside an 860px step without a sideways scroll. */
+.optimasi-report-status { color: #50575e; font-weight: 600; }
+.optimasi-report-status:not(:empty) { margin: 14px 0 0 48px; }  /* aligns with .optimasi-step-actions */
+/* Provenance for a report kept from an earlier review. Aligned with the step's text
+   rather than its number, like every other row inside the card. */
+.optimasi-report-previous {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin: 14px 0 0 48px;
+    color: #50575e;
+    font-size: 14px;
+}
+.optimasi-report-previous .btn { margin: 0; }
+.optimasi-report-frame {
+    display: block;
+    /* Bleed to the step's edges (-22px = the step's side padding) so the A4 page
+       (794px) still fits without a sideways scroll on mid-size admin screens.
+       An iframe is a replaced element, so width:auto would fall back to 300px —
+       the width has to be stated explicitly. The heading, actions and status
+       keep the normal 22px inset, so step 3 still aligns with the other steps. */
+    width: calc(100% + 44px);
+    margin: 16px -22px 0;
+    height: 1040px;
+    border: 0;
+    border-top: 1px solid #e2e4e7;
+    background: #f0f0f1;
+}
+@media (max-width: 1100px) {
+    .optimasi-report-frame { height: 860px; }
+}
+@media (max-width: 782px) {
+    .optimasi-report-status:not(:empty) { margin: 12px 0 0 0; }
+    .optimasi-report-previous { margin: 12px 0 0 0; }
+    .optimasi-report-frame { height: 680px; }
+    /* The state text is longer at 14px than it was at 12px; let it wrap rather
+       than squeeze the step title beside it. */
+    .optimasi-step-state { white-space: normal; }
+}
+
+/* ============================================================
+   OpenCart admin shims
+   ------------------------------------------------------------
+   The report components above were written against WordPress's admin chrome.
+   OpenCart has none of it, so the handful of classes the script emits and the
+   restyling it needs are defined here — once, scoped to the page — rather than
+   changing a hundred component rules to Bootstrap classes.
+   ============================================================ */
+
+/* Show/hide. The script toggles `is-hidden`; Bootstrap's equivalent is `d-none`
+   and the script does not speak Bootstrap. */
+.optimasi-audit .is-hidden { display: none !important; }
+
+/* OpenCart's `.btn` is Bootstrap's: it carries its own font-size, padding and
+   line-height, so the floor above sets the size and this keeps the shape. */
+.optimasi-audit .btn { line-height: 1.5; padding: 6px 14px; }
+.optimasi-audit .form-control,
+.optimasi-audit .form-select { padding: 6px 10px; height: auto; }
+
+/* WordPress's `p.description` is the muted helper text. */
+.optimasi-audit .description { color: var(--opt-muted); margin: 6px 0 0; }
+
+/* WordPress's `.notice` — the script uses it for the scan's empty state and for
+   a failed step. Both live inside a step card, so no outer margin. */
+.optimasi-audit .notice {
+    margin: 14px 0 0;
+    padding: 12px 16px;
+    border: 1px solid var(--opt-line);
+    border-left: 4px solid var(--opt-muted);
+    border-radius: 6px;
+    background: var(--opt-wash);
+}
+.optimasi-audit .notice p { margin: 0; }
+.optimasi-audit .notice-error { border-left-color: var(--opt-bad); background: #fdf4f3; }
+.optimasi-audit .notice-info { border-left-color: var(--opt-brand); background: var(--opt-brand-tint); }
+
+/* WordPress's `.spinner` — a rotating dot beside a button while a request runs.
+   The script adds/removes `is-active`, so visibility is driven by that class
+   alone and never by `display` in the markup. */
+.optimasi-audit .spinner {
+    display: none;
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+    border: 2px solid var(--opt-line-strong);
+    border-top-color: var(--opt-brand);
+    border-radius: 50%;
+    vertical-align: middle;
+    animation: optimasi-spin 0.8s linear infinite;
+}
+.optimasi-audit .spinner.is-active { display: inline-block; }
+@keyframes optimasi-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .optimasi-audit .spinner { animation-duration: 2.4s; }
+}
+
+/* Pager buttons in the evidence table (the script emits these, not the theme). */
+.optimasi-audit .optimasi-page-btn {
+    appearance: none;
+    border: 1px solid var(--opt-line-strong);
+    background: #ffffff;
+    color: var(--opt-ink);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.5;
+    cursor: pointer;
+}
+.optimasi-audit .optimasi-page-btn:hover:not(:disabled) { background: var(--opt-brand-tint); border-color: #b9d4cb; }
+.optimasi-audit .optimasi-page-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* The status read under the endpoint field. A definition list rather than a
+   table: it is three label/value pairs, and the labels are what an admin scans. */
+.optimasi-health {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--opt-line);
+}
+.optimasi-health h2 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--opt-muted);
+    margin: 0 0 10px;
+}
+.optimasi-health dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
+.optimasi-health dt { font-weight: 600; color: var(--opt-ink); }
+.optimasi-health dd { margin: 0; color: var(--opt-muted); }
+.optimasi-health code { font-size: 14px; }
+@media (max-width: 782px) {
+    .optimasi-health dl { grid-template-columns: 1fr; gap: 2px; }
+    .optimasi-health dd { margin-bottom: 8px; }
+}
