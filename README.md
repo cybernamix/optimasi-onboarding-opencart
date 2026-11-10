@@ -76,6 +76,34 @@ repository.
 
 ## Release history
 
+## 1.0.3
+
+Makes an unparseable response name itself instead of reporting "HTTP 200".
+
+- Every JSON action stops stray server output reaching the body: `display_errors` is
+  turned off for the response and anything already buffered is discarded. Diagnostics
+  still reach the log. A warning printed before the payload used to turn a working
+  action into "Server communication failed (HTTP 200)", which names no cause.
+- A body that cannot be encoded is reported in the normal envelope, with the reason,
+  rather than sent empty — an empty body is indistinguishable from no response.
+- When the browser cannot parse a response it now shows the first 300 characters of
+  what the server actually sent.
+
+## 1.0.2
+
+Fixes an install that hangs on OpenCart 4.1, and makes a failing step 1 say why.
+
+- The module's settings are written per key instead of through
+  `model_setting_setting->editSetting()`. On 4.1 that method writes `serialized`
+  as an empty string for every scalar value, which a strict-mode MySQL rejects —
+  so the write threw after OpenCart had already recorded the extension as
+  installed.
+- Install and uninstall check `extension/module`, the route OpenCart's own
+  installer validates before calling into the extension, instead of the unrelated
+  `marketplace/extension`.
+- Step 1 reports the reason for a database failure instead of answering with a
+  bare HTTP 500.
+
 ## 1.0.1
 
 - One report action instead of two: **Open or print in a new tab** replaces the separate
