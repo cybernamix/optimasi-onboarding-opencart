@@ -216,11 +216,15 @@
         </ol>
 
         {#
-          The endpoint. Visible but folded away: it ships with a working default,
-          so this is a support/agency tool rather than something a merchant needs —
-          and a wrong value in it silently breaks steps 2 and 3, which is exactly
-          why it is not in the main flow.
+          The endpoint. Hidden by default and identical to the WordPress plugin's
+          decision: it ships with a working default, so this is a support/agency tool
+          rather than something a merchant needs — and a wrong value in it silently
+          breaks steps 2 and 3. Opt in per store with
+          define('OPTIMASI_ONBOARDING_SHOW_ADVANCED', true) in admin/config.php.
+          The markup stays here, gated, so the script's element ids remain in one
+          place and the panel can be switched on without editing the template.
         #}
+        {% if show_advanced %}
         <details class="optimasi-advanced">
           <summary>{{ text_settings_heading }}</summary>
             <p class="description">{{ settings_help_text }}</p>
@@ -231,6 +235,7 @@
           </div>
           <p id="optimasi-api-url-message" class="optimasi-inline-message"></p>
         </details>
+        {% endif %}
 
         {#
           A one-line health read. The three things that decide whether step 2 works
