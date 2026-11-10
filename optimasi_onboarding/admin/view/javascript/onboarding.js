@@ -223,6 +223,7 @@
     // it is rendered for the visitor, not run by them.
     function unlockStep(step) {
         $('#optimasi-step-' + step).removeClass('is-locked');
+
         const $btn = STEP_BUTTONS[step];
         if ($btn && $btn.length) {
             $('#optimasi-step-' + step).addClass('is-active');
@@ -648,6 +649,17 @@
                         if (typeof res.detail === 'string' && res.detail) msg = res.detail;
                     }
                     const status = (xhr && typeof xhr.status === 'number') ? xhr.status : 0;
+                    // `dataType: 'json'` rejects a body jQuery cannot parse, so a 200 here
+                    // means the server answered with something that was not JSON -- almost
+                    // always output printed before the payload. The head of it turns
+                    // "HTTP 200" into something that can be acted on without a shell on
+                    // the store.
+                    if (!res) {
+                        const raw = String((xhr && xhr.responseText) || '').replace(/\s+/g, ' ').trim();
+                        if (raw) {
+                            msg += ' Server said: ' + (raw.length > 300 ? raw.slice(0, 300) + '...' : raw);
+                        }
+                    }
                     if (status) {
                         msg = msg.replace(/\.?$/, '') + ' (HTTP ' + status + ')';
                     }
@@ -1194,10 +1206,18 @@
                     $body.html(findingsHtml(text) || '<p class="description">Audit findings could not be generated for this catalog.</p>');
                 }
             })
-            .catch(function () {
+            .catch(function (err) {
+                // `post()` rejects with an Error whose message already carries the
+                // server's own reason, relayed from the service's `detail`/`message`.
+                // Reading `err.responseJSON` here — as this did — always found nothing,
+                // because that property only exists on a jQuery jqXHR, so a real
+                // failure was reported as a generic line and the cause was lost.
+                const why = (err && err.message) ? String(err.message) : '';
                 const $body = $('#optimasi-findings-body');
                 if ($body.length) {
-                    $body.html('<p class="description">The plain-language findings are unavailable right now — the numbers above still tell the story.</p>');
+                    $body.html('<p class="description">The plain-language findings are unavailable right now' +
+                        (why ? ' — ' + escapeHtml(why) : '') +
+                        '. The numbers above still tell the story.</p>');
                 }
             });
     }
@@ -1405,10 +1425,11 @@
                 noteExplainersUnavailable('The review service didn’t return detailed explainers.');
             })
             .catch(function (err) {
-                // Surface the real server reason when we have it (e.g. the
-                // review service couldn't be reached) and offer a retry.
-                const serverMsg = (err && err.responseJSON && err.responseJSON.data && err.responseJSON.data.message)
-                    ? err.responseJSON.data.message : '';
+                // `post()` rejects with an Error that already carries the server's own
+                // reason. This read `err.responseJSON`, which only exists on a jQuery
+                // jqXHR — so it was always empty and every failure showed the generic
+                // line below, with the cause thrown away.
+                const serverMsg = (err && err.message) ? String(err.message) : '';
                 noteExplainersUnavailable(serverMsg || 'Detailed explainers with cited stats couldn’t be loaded.');
             });
     }

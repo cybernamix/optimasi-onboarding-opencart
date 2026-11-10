@@ -96,7 +96,7 @@ class Onboarding extends \Opencart\System\Engine\Model {
 
                 $long_html = (string)($descriptions[$product_id]['description'] ?? '');
                 $meta_desc = (string)($descriptions[$product_id]['meta_description'] ?? '');
-                $name      = (string)($descriptions[$product_id]['name'] ?? '');
+                $name      = self::decodeText((string)($descriptions[$product_id]['name'] ?? ''));
 
                 if ($name === '') {
                     $name = '#' . $product_id;
@@ -379,14 +379,14 @@ class Onboarding extends \Opencart\System\Engine\Model {
                 continue;
             }
 
-            $names[(int)$row['category_id']] = (string)$row['name'];
+            $names[(int)$row['category_id']] = self::decodeText((string)$row['name']);
         }
 
         $out = [];
 
         foreach ($links as $row) {
             $category_id = (int)$row['category_id'];
-            $name        = trim($names[$category_id] ?? '');
+            $name        = self::decodeText((string)($names[$category_id] ?? ''));
 
             if ($name === '') {
                 continue;
@@ -527,10 +527,25 @@ class Onboarding extends \Opencart\System\Engine\Model {
         $out = [];
 
         foreach ($rows as $row) {
-            $out[(int)$row['manufacturer_id']] = (string)$row['name'];
+            $out[(int)$row['manufacturer_id']] = self::decodeText((string)$row['name']);
         }
 
         return $out;
+    }
+
+    /**
+     * A display name as plain text, with HTML entities resolved.
+     *
+     * OpenCart stores whatever the merchant typed or the import delivered, so a title
+     * can legitimately hold `&amp;` and reach the report as literal `Black &amp; Red
+     * Ribbon`. Decoded here, once, so every consumer — the evidence table, the
+     * worst-products list, the findings payload and the PDF — shows the same text.
+     *
+     * Descriptions are deliberately NOT decoded: they are HTML, their markers are
+     * matched against the stored form, and their own plain-text view already decodes.
+     */
+    private static function decodeText(string $value): string {
+        return trim(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     /**
