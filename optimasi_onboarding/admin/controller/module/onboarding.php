@@ -34,7 +34,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      * tooling moves both together. It is also the asset cache-buster, so a release
      * always ships fresh CSS and JS.
      */
-    public const VERSION = '1.0.1';
+    public const VERSION = '1.0.4';
 
     /** The extension code, which is also the zip filename and the route segment. */
     private const CODE = 'optimasi_onboarding';
@@ -148,12 +148,12 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         $data['ajax'] = [];
 
         foreach (['scan', 'voice', 'findings', 'explainers', 'report', 'snapshot', 'email_report', 'contact', 'save'] as $action) {
-            $data['ajax'][$action] = $this->url->link(self::ROUTE . '.' . $action, 'user_token=' . $token);
+            $data['ajax'][$action] = $this->jsUrl(self::ROUTE . '.' . $action, 'user_token=' . $token);
         }
 
         // The report is served by this extension for "Open in a new tab", rather
         // than re-wrapped in a blob in the browser — see report_html().
-        $data['report_html_url'] = $this->url->link(self::ROUTE . '.report_html', 'user_token=' . $token);
+        $data['report_html_url'] = $this->jsUrl(self::ROUTE . '.report_html', 'user_token=' . $token);
 
         // The offer's channel and role lists, labels from the language file so a
         // translator can reach every string the page shows.
@@ -240,7 +240,20 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
         $model = $this->load->model('extension/optimasi_onboarding/module/onboarding');
 
-        $this->ok($model->scan($this->languageId(), self::SCAN_CAP));
+        try {
+            $result = $model->scan($this->languageId(), self::SCAN_CAP);
+        } catch (\Throwable $e) {
+            // A failing query used to leave the page on a bare "Server communication
+            // failed (HTTP 500)", with the reason only in the PHP log and no way to
+            // read it from the page. Named here instead: only an admin holding modify
+            // permission on this module can reach this action, and the message is what
+            // makes the fault fixable without shell access to the store.
+            $this->fail($this->cleanText($e->getMessage(), 500), 'scan_failed');
+
+            return;
+        }
+
+        $this->ok($result);
     }
 
     // ------------------------------------------------------------------
@@ -685,17 +698,18 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      * inert. That is the whole reason it is admin-only.
      */
     public function install(): void {
-        // Gated on the permission that installing and uninstalling actually needs,
-        // not on this module's own — a fresh install has no permission rows for a
-        // route that did not exist a moment ago, so guarding on self::ROUTE here would
-        // make the module impossible to install.
-        if (!$this->user->hasPermission('modify', 'marketplace/extension')) {
+        // Gated on `extension/module`, the route OpenCart's own installer validated
+        // before calling this method: it checks modify on that route, then grants this
+        // module's own access and modify. The gate stays because this action is also
+        // reachable directly by any admin session (`.../module/onboarding.install`),
+        // but the ROUTE was wrong — `marketplace/extension` is a different page, and a
+        // group holding the module list without that page got an install that silently
+        // wrote nothing while OpenCart reported success.
+        if (!$this->user->hasPermission('modify', 'extension/module')) {
             return;
         }
 
-        $setting = $this->load->model('setting/setting');
-
-        $setting->editSetting(self::SETTING_CODE, [
+        $this->writeSettings([
             self::KEY_STATUS  => 1,
             self::KEY_API_URL => '',
             self::KEY_CONSENT => 0,
@@ -717,8 +731,9 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     public function uninstall(): void {
         // Same gate as install(), and for the same reason: this action DELETEs the
         // module's settings, and it must not be reachable by a session that merely
-        // knows its own user_token.
-        if (!$this->user->hasPermission('modify', 'marketplace/extension')) {
+        // knows its own user_token. `extension/module` is the route the installer
+        // itself requires for this action.
+        if (!$this->user->hasPermission('modify', 'extension/module')) {
             return;
         }
 
@@ -789,35 +804,75 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     }
 
     /**
-     * Write one of our settings without disturbing the other three.
+     * Write one of our settings without disturbing the other four.
      *
-     * `editSetting()` deletes every row for the code before inserting, so a
-     * single-key call would take its siblings with it — consent would wipe the
-     * saved endpoint, and saving the endpoint would wipe the consent decision we
-     * are only allowed to ask for once. Writing all four keys every time keeps
-     * that impossible.
+     * Deliberately NOT `model_setting_setting->editSetting()`, for two reasons:
+     *
+     *  - it DELETEs every row for the code and then re-inserts, so a failure part-way
+     *    through leaves the module holding some of its settings and not others — and
+     *    the delete is the dangerous half, because losing consent means asking the
+     *    merchant to agree a second time;
+     *  - on OpenCart 4.1 its non-array branch writes `serialized` as
+     *    `(string)(bool) false`, which is an EMPTY STRING rather than '0'. A
+     *    strict-mode MySQL rejects that for the column, so the write throws — inside
+     *    install(), that is a 500 after OpenCart has already recorded the extension as
+     *    installed, which is exactly the "spinner never finishes, but it is installed"
+     *    shape.
+     *
+     * A per-key upsert has neither property: a key written twice is written once, and a
+     * rejected key does not take its siblings with it. The Content Manager writes its
+     * settings the same way.
+     */
+    private function writeSettings(array $values): void {
+        foreach ($values as $key => $value) {
+            $key      = (string)$key;
+            $existing = $this->db->query(
+                "SELECT `setting_id` FROM `" . DB_PREFIX . "setting`"
+                . " WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::SETTING_CODE) . "'"
+                . " AND `key` = '" . $this->db->escape($key) . "'"
+            );
+
+            if ($existing->num_rows) {
+                $this->db->query(
+                    "UPDATE `" . DB_PREFIX . "setting` SET `value` = '" . $this->db->escape((string)$value) . "',"
+                    . " `serialized` = '0' WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::SETTING_CODE) . "'"
+                    . " AND `key` = '" . $this->db->escape($key) . "'"
+                );
+            } else {
+                $this->db->query(
+                    "INSERT INTO `" . DB_PREFIX . "setting` SET `store_id` = '0',"
+                    . " `code` = '" . $this->db->escape(self::SETTING_CODE) . "',"
+                    . " `key` = '" . $this->db->escape($key) . "',"
+                    . " `value` = '" . $this->db->escape((string)$value) . "', `serialized` = '0'"
+                );
+            }
+
+            // `$this->config` was populated before this request ran, so without this
+            // the rest of the call would still read the old value.
+            $this->config->set($key, $value);
+        }
+    }
+
+    /**
+     * Write one key while leaving its siblings as they are.
+     *
+     * The full set is written every time. Not because a single key would disturb the
+     * others — writeSettings() cannot — but because the values come from `config`, and
+     * writing only the key that changed would let a row that is missing (a partial
+     * install, a hand-edited database) stay missing forever.
      */
     private function persistSetting(string $key, $value): void {
-        $setting = $this->load->model('setting/setting');
-
         $values = [
-            self::KEY_STATUS  => (int)$this->config->get(self::KEY_STATUS),
-            self::KEY_API_URL => (string)$this->config->get(self::KEY_API_URL),
-            self::KEY_CONSENT => (int)$this->config->get(self::KEY_CONSENT),
-            self::KEY_TOKEN   => (string)$this->config->get(self::KEY_TOKEN),
-            // Must be here too. This list is written in full on every call because
-            // editSetting() deletes every row for the code first — so a key missing
-            // from it is a key that gets erased the next time consent is recorded.
+            self::KEY_STATUS    => (int)$this->config->get(self::KEY_STATUS),
+            self::KEY_API_URL   => (string)$this->config->get(self::KEY_API_URL),
+            self::KEY_CONSENT   => (int)$this->config->get(self::KEY_CONSENT),
+            self::KEY_TOKEN     => (string)$this->config->get(self::KEY_TOKEN),
             self::KEY_REPORT_AT => (int)$this->config->get(self::KEY_REPORT_AT),
         ];
 
         $values[$key] = $value;
 
-        $setting->editSetting(self::SETTING_CODE, $values);
-
-        // `$this->config` was loaded at the start of the request, so the running
-        // process would otherwise read its old value for the rest of this call.
-        $this->config->set($key, $value);
+        $this->writeSettings($values);
     }
 
     // ------------------------------------------------------------------
@@ -1038,9 +1093,41 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         $this->json(['success' => false, 'data' => ['message' => $message, 'error' => $error]]);
     }
 
+    /**
+     * Answer an action, as the one envelope the page's script understands.
+     *
+     * The hardening is not decoration. A warning, notice or deprecation echoed by
+     * anything earlier in the request -- this extension, OpenCart core, or a host's
+     * prepend file -- lands in FRONT of this body, and the browser's `dataType: 'json'`
+     * then reports the whole exchange as "Server communication failed (HTTP 200)": a
+     * failure carrying neither a status nor a cause. Diagnostics go to the log instead,
+     * which is where they belong for a machine-read response.
+     */
     private function json(array $payload): void {
+        ini_set('display_errors', '0');
+
+        // Anything already echoed is removed where a buffer exists; where it does not,
+        // the output has already gone out and no PHP setting can retract it.
+        if (!headers_sent() && ob_get_level() > 0) {
+            @ob_clean();
+        }
+
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        if ($body === false) {
+            // An empty body is indistinguishable, in the browser, from a request that
+            // never came back -- so say what went wrong in the same envelope instead.
+            $body = json_encode([
+                'success' => false,
+                'data'    => [
+                    'message' => 'The response could not be encoded: ' . json_last_error_msg(),
+                    'error'   => 'encode_failed',
+                ],
+            ]);
+        }
+
         $this->response->addHeader('Content-Type: application/json');
-        $this->response->setOutput((string)json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+        $this->response->setOutput((string)$body);
     }
 
     /**
@@ -1219,6 +1306,24 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
         return rtrim($base, '/') . '/extension/' . self::CODE . '/admin/view/' . ltrim($path, '/')
             . '?v=' . rawurlencode(self::VERSION);
+    }
+
+    /**
+     * A URL to embed in JavaScript, rather than to write into an HTML attribute.
+     *
+     * `url->link()` returns an `&amp;`-separated query string, which is correct in an
+     * `href` and wrong here: this value is emitted inside a <script> block, where HTML
+     * entities are NOT decoded. Embedded as-is, the browser sends `amp;user_token=…`,
+     * PHP receives no `user_token` at all, OpenCart answers with the login page, and the
+     * page reports "Server communication failed (HTTP 200)" — a 200 whose body the
+     * browser cannot parse, which names neither the cause nor the fault.
+     *
+     * `html_entity_decode` rather than the third argument to `link()`, because that
+     * argument is `$secure` in OpenCart 4.0 and `$js` in 4.1: using it would fix 4.1 and
+     * quietly mean something else on 4.0. Decoding produces the right string on both.
+     */
+    private function jsUrl(string $route, string $args = ''): string {
+        return html_entity_decode($this->url->link($route, $args), ENT_QUOTES, 'UTF-8');
     }
 
     /**
