@@ -34,7 +34,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      * tooling moves both together. It is also the asset cache-buster, so a release
      * always ships fresh CSS and JS.
      */
-    public const VERSION = '1.0.1';
+    public const VERSION = '1.0.2';
 
     /** The extension code, which is also the zip filename and the route segment. */
     private const CODE = 'optimasi_onboarding';
@@ -240,7 +240,20 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
         $model = $this->load->model('extension/optimasi_onboarding/module/onboarding');
 
-        $this->ok($model->scan($this->languageId(), self::SCAN_CAP));
+        try {
+            $result = $model->scan($this->languageId(), self::SCAN_CAP);
+        } catch (\Throwable $e) {
+            // A failing query used to leave the page on a bare "Server communication
+            // failed (HTTP 500)", with the reason only in the PHP log and no way to
+            // read it from the page. Named here instead: only an admin holding modify
+            // permission on this module can reach this action, and the message is what
+            // makes the fault fixable without shell access to the store.
+            $this->fail($this->cleanText($e->getMessage(), 500), 'scan_failed');
+
+            return;
+        }
+
+        $this->ok($result);
     }
 
     // ------------------------------------------------------------------
@@ -685,17 +698,18 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      * inert. That is the whole reason it is admin-only.
      */
     public function install(): void {
-        // Gated on the permission that installing and uninstalling actually needs,
-        // not on this module's own — a fresh install has no permission rows for a
-        // route that did not exist a moment ago, so guarding on self::ROUTE here would
-        // make the module impossible to install.
-        if (!$this->user->hasPermission('modify', 'marketplace/extension')) {
+        // Gated on `extension/module`, the route OpenCart's own installer validated
+        // before calling this method: it checks modify on that route, then grants this
+        // module's own access and modify. The gate stays because this action is also
+        // reachable directly by any admin session (`.../module/onboarding.install`),
+        // but the ROUTE was wrong — `marketplace/extension` is a different page, and a
+        // group holding the module list without that page got an install that silently
+        // wrote nothing while OpenCart reported success.
+        if (!$this->user->hasPermission('modify', 'extension/module')) {
             return;
         }
 
-        $setting = $this->load->model('setting/setting');
-
-        $setting->editSetting(self::SETTING_CODE, [
+        $this->writeSettings([
             self::KEY_STATUS  => 1,
             self::KEY_API_URL => '',
             self::KEY_CONSENT => 0,
@@ -717,8 +731,9 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     public function uninstall(): void {
         // Same gate as install(), and for the same reason: this action DELETEs the
         // module's settings, and it must not be reachable by a session that merely
-        // knows its own user_token.
-        if (!$this->user->hasPermission('modify', 'marketplace/extension')) {
+        // knows its own user_token. `extension/module` is the route the installer
+        // itself requires for this action.
+        if (!$this->user->hasPermission('modify', 'extension/module')) {
             return;
         }
 
@@ -789,35 +804,75 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     }
 
     /**
-     * Write one of our settings without disturbing the other three.
+     * Write one of our settings without disturbing the other four.
      *
-     * `editSetting()` deletes every row for the code before inserting, so a
-     * single-key call would take its siblings with it — consent would wipe the
-     * saved endpoint, and saving the endpoint would wipe the consent decision we
-     * are only allowed to ask for once. Writing all four keys every time keeps
-     * that impossible.
+     * Deliberately NOT `model_setting_setting->editSetting()`, for two reasons:
+     *
+     *  - it DELETEs every row for the code and then re-inserts, so a failure part-way
+     *    through leaves the module holding some of its settings and not others — and
+     *    the delete is the dangerous half, because losing consent means asking the
+     *    merchant to agree a second time;
+     *  - on OpenCart 4.1 its non-array branch writes `serialized` as
+     *    `(string)(bool) false`, which is an EMPTY STRING rather than '0'. A
+     *    strict-mode MySQL rejects that for the column, so the write throws — inside
+     *    install(), that is a 500 after OpenCart has already recorded the extension as
+     *    installed, which is exactly the "spinner never finishes, but it is installed"
+     *    shape.
+     *
+     * A per-key upsert has neither property: a key written twice is written once, and a
+     * rejected key does not take its siblings with it. The Content Manager writes its
+     * settings the same way.
+     */
+    private function writeSettings(array $values): void {
+        foreach ($values as $key => $value) {
+            $key      = (string)$key;
+            $existing = $this->db->query(
+                "SELECT `setting_id` FROM `" . DB_PREFIX . "setting`"
+                . " WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::SETTING_CODE) . "'"
+                . " AND `key` = '" . $this->db->escape($key) . "'"
+            );
+
+            if ($existing->num_rows) {
+                $this->db->query(
+                    "UPDATE `" . DB_PREFIX . "setting` SET `value` = '" . $this->db->escape((string)$value) . "',"
+                    . " `serialized` = '0' WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::SETTING_CODE) . "'"
+                    . " AND `key` = '" . $this->db->escape($key) . "'"
+                );
+            } else {
+                $this->db->query(
+                    "INSERT INTO `" . DB_PREFIX . "setting` SET `store_id` = '0',"
+                    . " `code` = '" . $this->db->escape(self::SETTING_CODE) . "',"
+                    . " `key` = '" . $this->db->escape($key) . "',"
+                    . " `value` = '" . $this->db->escape((string)$value) . "', `serialized` = '0'"
+                );
+            }
+
+            // `$this->config` was populated before this request ran, so without this
+            // the rest of the call would still read the old value.
+            $this->config->set($key, $value);
+        }
+    }
+
+    /**
+     * Write one key while leaving its siblings as they are.
+     *
+     * The full set is written every time. Not because a single key would disturb the
+     * others — writeSettings() cannot — but because the values come from `config`, and
+     * writing only the key that changed would let a row that is missing (a partial
+     * install, a hand-edited database) stay missing forever.
      */
     private function persistSetting(string $key, $value): void {
-        $setting = $this->load->model('setting/setting');
-
         $values = [
-            self::KEY_STATUS  => (int)$this->config->get(self::KEY_STATUS),
-            self::KEY_API_URL => (string)$this->config->get(self::KEY_API_URL),
-            self::KEY_CONSENT => (int)$this->config->get(self::KEY_CONSENT),
-            self::KEY_TOKEN   => (string)$this->config->get(self::KEY_TOKEN),
-            // Must be here too. This list is written in full on every call because
-            // editSetting() deletes every row for the code first — so a key missing
-            // from it is a key that gets erased the next time consent is recorded.
+            self::KEY_STATUS    => (int)$this->config->get(self::KEY_STATUS),
+            self::KEY_API_URL   => (string)$this->config->get(self::KEY_API_URL),
+            self::KEY_CONSENT   => (int)$this->config->get(self::KEY_CONSENT),
+            self::KEY_TOKEN     => (string)$this->config->get(self::KEY_TOKEN),
             self::KEY_REPORT_AT => (int)$this->config->get(self::KEY_REPORT_AT),
         ];
 
         $values[$key] = $value;
 
-        $setting->editSetting(self::SETTING_CODE, $values);
-
-        // `$this->config` was loaded at the start of the request, so the running
-        // process would otherwise read its old value for the rest of this call.
-        $this->config->set($key, $value);
+        $this->writeSettings($values);
     }
 
     // ------------------------------------------------------------------
