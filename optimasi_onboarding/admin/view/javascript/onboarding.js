@@ -648,6 +648,17 @@
                         if (typeof res.detail === 'string' && res.detail) msg = res.detail;
                     }
                     const status = (xhr && typeof xhr.status === 'number') ? xhr.status : 0;
+                    // `dataType: 'json'` rejects a body jQuery cannot parse, so a 200 here
+                    // means the server answered with something that was not JSON -- almost
+                    // always output printed before the payload. The head of it turns
+                    // "HTTP 200" into something that can be acted on without a shell on
+                    // the store.
+                    if (!res) {
+                        const raw = String((xhr && xhr.responseText) || '').replace(/\s+/g, ' ').trim();
+                        if (raw) {
+                            msg += ' Server said: ' + (raw.length > 300 ? raw.slice(0, 300) + '...' : raw);
+                        }
+                    }
                     if (status) {
                         msg = msg.replace(/\.?$/, '') + ' (HTTP ' + status + ')';
                     }

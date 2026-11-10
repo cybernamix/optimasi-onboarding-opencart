@@ -97,10 +97,9 @@ $_['button_save']            = 'Save';
 $_['button_back']            = 'Back';
 
 // Shown on the settings page so an admin can answer "why does step 2 not work"
-// without reading the journal.
+// without reading the journal. The endpoint is not among these: a merchant cannot
+// act on it, so nothing on the page names it.
 $_['text_health_heading']    = 'Status';
-$_['text_health_endpoint']   = 'Review service';
-$_['text_health_default']    = 'the default service';
 $_['text_health_consent']    = 'Description samples';
 $_['text_health_consent_yes'] = 'Consent recorded';
 $_['text_health_consent_no'] = 'Not yet given';
@@ -130,4 +129,4 @@ $_['error_email_failed']        = 'Could not save your report request.';
 $_['error_contact_failed']      = 'We could not record your request — please try again.';
 $_['error_invalid_url']         = 'Enter a full URL starting with https://';
 $_['error_no_curl']             = 'The PHP cURL extension is not enabled on this server, so the Optimasi review service cannot be reached.';
-$_['error_no_endpoint']         = 'No review service endpoint is configured (see the extension\'s DEFAULT_API_URL).';
+$_['error_no_endpoint']         = 'This store has no review service configured, so the review cannot run. Please contact Optimasi support.';
