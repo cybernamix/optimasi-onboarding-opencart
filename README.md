@@ -1,4 +1,4 @@
-# Optimasi Content Audit — OpenCart 4
+# Content Audit for OpenCart 4
 
 A free, four-step, **read-only** content review for an OpenCart catalogue. Upload one
 `.ocmod.zip`, open one page, and get a four-page Sales-Ready report about your own
@@ -30,7 +30,7 @@ whether you want any of it.
 
 1. Download `optimasi_onboarding.ocmod.zip` from the [latest release](https://github.com/cybernamix/optimasi-onboarding-opencart/releases/latest).
 2. **Extensions → Installer → Upload** the zip, then press the install button.
-3. **Extensions → Extensions → Modules** → find **Optimasi Content Audit** → **Install** (+).
+3. **Extensions → Extensions → Modules** → find **Content Audit for OpenCart 4** → **Install** (+).
 4. Open its settings page. The page *is* the review; there is nothing else to configure.
 
 The display name and the extension *code* are deliberately different things. The code is
@@ -64,7 +64,7 @@ never read.
 
 ## Uninstall
 
-**Extensions → Extensions → Modules → Optimasi Content Audit → Uninstall** (−). That
+**Extensions → Extensions → Modules → Content Audit for OpenCart 4 → Uninstall** (−). That
 removes the extension's own five settings and nothing else. There is no other data to
 lose, because the extension never wrote any.
 
@@ -77,6 +77,19 @@ GPL-2.0-or-later. The full licence text is in [`LICENSE`](LICENSE) at the root o
 repository.
 
 ## Release history
+
+## 1.0.16
+
+- Renamed to "Content Audit for OpenCart 4". The extension list, the module heading and the two
+  admin messages that named it now use the new name.
+
+- The zip filename is unchanged (`optimasi_onboarding.ocmod.zip`). OpenCart 4 derives the extension
+  code from that filename, and the code decides the installed directory, the namespace and the
+  `module_onboarding_*` settings keys — so renaming it would install a second extension beside the
+  first and leave every stored setting behind. Existing installs upgrade in place: same code, same
+  settings.
+
+- No behaviour change. Same four steps, same requests, same consent gate, same report.
 
 ## 1.0.15
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Optimasi Content Audit — module controller.
+ * Content Audit for OpenCart 4 — module controller.
  *
  * A free, four-step, read-only content review that a merchant runs before buying
  * anything:
@@ -34,7 +34,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      * tooling moves both together. It is also the asset cache-buster, so a release
      * always ships fresh CSS and JS.
      */
-    public const VERSION = '1.0.15';
+    public const VERSION = '1.0.16';
 
     /** The extension code, which is also the zip filename and the route segment. */
     private const CODE = 'optimasi_onboarding';

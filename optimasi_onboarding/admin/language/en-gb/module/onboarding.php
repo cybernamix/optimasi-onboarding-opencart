@@ -1,6 +1,6 @@
 <?php
 /**
- * Optimasi Content Audit — language strings.
+ * Content Audit for OpenCart 4 — language strings.
  *
  * Every string the page shows lives here, including the offer panel's channel
  * and role labels, because nothing is hard-coded in the template or the script
@@ -13,7 +13,7 @@
  */
 
 // Heading.
-$_['heading_title']       = 'Optimasi Content Audit';
+$_['heading_title']       = 'Content Audit for OpenCart 4';
 $_['heading_audit']       = 'Optimasi Ecommerce Content Completeness Audit';
 $_['text_lead']           = 'A free 4-step review of your product content — nothing is written to your store and no registration is required.';
 $_['text_version']        = 'Version';
@@ -22,8 +22,8 @@ $_['text_version']        = 'Version';
 $_['text_edit']           = 'Content Audit settings';
 $_['text_extension']      = 'Extensions';
 $_['text_home']           = 'Home';
-$_['text_success']        = 'Success: You have modified the Optimasi Content Audit settings.';
-$_['error_permission']    = 'Warning: You do not have permission to modify the Optimasi Content Audit.';
+$_['text_success']        = 'Success: You have modified the Content Audit for OpenCart 4 settings.';
+$_['error_permission']    = 'Warning: You do not have permission to modify the Content Audit for OpenCart 4.';
 
 // Step 1 — scan (local, nothing leaves the store).
 $_['step1_title']         = 'Scan your products';
@@ -106,7 +106,7 @@ $_['text_endpoint_default']  = 'Using the default Optimasi endpoint.';
 
 // Errors. These are the messages the merchant reads on the page, so they say
 // what to do next rather than naming an internal state.
-$_['error_permission']          = 'Warning: You do not have permission to modify the Optimasi Content Audit.';
+$_['error_permission']          = 'Warning: You do not have permission to modify the Content Audit for OpenCart 4.';
 $_['error_consent_required']    = 'Please tick the box to allow a short sample of your product descriptions to be sent to Optimasi for analysis.';
 $_['error_unreachable']         = 'Could not reach the Optimasi service.';
 $_['error_analyse_failed']      = 'Could not analyse your brand voice.';

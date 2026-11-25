@@ -1,6 +1,6 @@
 <?php
 /**
- * Optimasi Content Audit — the product scanner.
+ * Content Audit for OpenCart 4 — the product scanner.
  *
  * Reads the store's own catalogue and returns factual measurements only. No
  * scoring weights, thresholds or heuristics live here: the Optimasi service
