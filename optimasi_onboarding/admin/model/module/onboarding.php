@@ -32,19 +32,25 @@ class Onboarding extends \Opencart\System\Engine\Model {
     private const FEATURE_KEYS = ['narrative', 'brand_story', 'reviews', 'trust', 'faq', 'specs', 'images'];
 
     /**
-     * Measure up to `$cap` published products.
+     * Measure published products.
      *
      * @param int  $language_id  description language to read (the admin's, falling
      *                           back to the store default for any product without
      *                           a row in it)
-     * @param int  $cap          maximum products to scan
+     * @param int  $cap          how many products to measure; 0 (or less) means the
+     *                           whole published catalogue, which is what the scan
+     *                           asks for. A positive value is only used by tests
+     *                           and by any caller that deliberately wants a slice.
      * @param bool $with_text    attach description text (only for the voice sample)
      * @param int  $text_sample  how many products carry text, spread evenly; 0 = all
      *
      * @return array{total:int,audited_at:string,completeness:int,features:array,products:array,authority:array}
      */
     public function scan(int $language_id, int $cap, bool $with_text = false, int $text_sample = 0): array {
-        $cap = max(1, min(1000, $cap));
+        // No upper clamp. There used to be a `min(1000, $cap)` here, which quietly
+        // overrode the caller and made the plugin report a 1000-product slice of a
+        // larger catalogue as the catalogue itself.
+        $cap = max(0, $cap);
 
         $ids = $this->productIds($cap);
 
@@ -205,11 +211,15 @@ class Onboarding extends \Opencart\System\Engine\Model {
     // ------------------------------------------------------------------
 
     /**
-     * The published product ids to scan, ascending, capped.
+     * The published product ids to scan, ascending, optionally bounded.
      *
      * `status = 1` is OpenCart's "enabled". Disabled products are excluded for
      * the same reason the WooCommerce plugin excludes drafts: the review is
      * about what shoppers can see.
+     *
+     * A `$cap` of 0 selects the whole catalogue — the statement then carries no
+     * LIMIT at all, rather than a very large one, so the database is free to use
+     * the status index and stream the rows.
      *
      * @return int[]
      */
@@ -217,8 +227,8 @@ class Onboarding extends \Opencart\System\Engine\Model {
         $rows = $this->db->query(
             "SELECT `product_id` FROM `" . DB_PREFIX . "product`
               WHERE `status` = '1'
-              ORDER BY `product_id` ASC
-              LIMIT " . (int)$cap
+              ORDER BY `product_id` ASC"
+            . ($cap > 0 ? " LIMIT " . (int)$cap : '')
         )->rows;
 
         return array_map(static fn (array $row): int => (int)$row['product_id'], $rows);

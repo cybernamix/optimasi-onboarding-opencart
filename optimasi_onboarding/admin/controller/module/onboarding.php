@@ -5,7 +5,7 @@
  * A free, four-step, read-only content review that a merchant runs before buying
  * anything:
  *
- *   1. Scan           measure up to 1,000 published products in the admin PHP.
+ *   1. Scan           measure every published product in the admin PHP.
  *                     Nothing leaves the store.
  *   2. Brand voice    send a short sample of each description to the Optimasi
  *                     review endpoint. Gated on explicit consent.
@@ -34,7 +34,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      * tooling moves both together. It is also the asset cache-buster, so a release
      * always ships fresh CSS and JS.
      */
-    public const VERSION = '1.0.8';
+    public const VERSION = '1.0.15';
 
     /** The extension code, which is also the zip filename and the route segment. */
     private const CODE = 'optimasi_onboarding';
@@ -78,27 +78,60 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
     private const CONTACT_ROLES = ['agency', 'store_owner', 'ecommerce_professional', 'store_manager'];
 
-    /** Scan budget: measure up to this many products… */
-    private const SCAN_CAP = 1000;
+    /**
+     * Products the scan measures: the whole published catalogue.
+     *
+     * Step 1 runs entirely against the store's own database — no text leaves the
+     * site — so the only thing that needs bounding is the store's own execution
+     * time, not the number of products. The cap that used to sit here (1000)
+     * reported a partial catalogue as if it were the whole one.
+     */
+    private const SCAN_ALL = 0;
 
-    /** …and send text for this many, spread evenly across the catalogue. */
+    /**
+     * Products whose description text travels in step 2, spread evenly.
+     *
+     * This is the only step that ships product text off the site, so it stays a
+     * bounded sample regardless of catalogue size — the cost of that step must
+     * not grow with the number of products.
+     */
     private const VOICE_SAMPLE = 50;
 
     // ------------------------------------------------------------------
-    // Settings keys. All four live in OpenCart's own `setting` table.
+    // Settings keys. All of them live in OpenCart's own `setting` table.
+    //
+    // The prefix is `module_onboarding`, and it is NOT ours to choose: OpenCart derives
+    // it from the extension and the code, and two of its own paths depend on the
+    // spelling.
+    //
+    //   * `extension/module.getList()` draws the Enabled/Disabled column from
+    //     `module_<code>_status`, where <code> is THIS FILE'S NAME. Written under any
+    //     other key, the row is simply not found and the module list reports Disabled
+    //     however the module is configured — which is what happened while these keys
+    //     carried the extension's name instead.
+    //   * `model_setting_extension->uninstall('module', 'onboarding')` deletes settings
+    //     by `code = 'module_onboarding'`, so a different code leaves every row behind.
+    //
+    // 1.0.9 and earlier wrote the old spelling. adoptLegacySettings() copies those rows
+    // across on the first page load, so an upgrade that replaces files keeps the
+    // merchant's endpoint, consent and report token instead of orphaning them.
     // ------------------------------------------------------------------
 
-    private const SETTING_CODE = 'module_optimasi_onboarding';
+    private const SETTING_CODE = 'module_onboarding';
 
-    private const KEY_STATUS  = 'module_optimasi_onboarding_status';
-    private const KEY_API_URL = 'module_optimasi_onboarding_api_url';
-    private const KEY_CONSENT = 'module_optimasi_onboarding_consent_send_samples';
-    private const KEY_TOKEN   = 'module_optimasi_onboarding_report_token';
+    /** Read by OpenCart's module list to decide Enabled/Disabled. */
+    private const KEY_STATUS  = 'module_onboarding_status';
+    private const KEY_API_URL = 'module_onboarding_api_url';
+    private const KEY_CONSENT = 'module_onboarding_consent_send_samples';
+    private const KEY_TOKEN   = 'module_onboarding_report_token';
     // When the stored report was produced, so step 3 can say which review it came from.
     // A token without a date is what made a stored report indistinguishable from a
     // fresh one; a token written by a version that did not store this reads as "an
     // earlier review" rather than inventing a date it does not have.
-    private const KEY_REPORT_AT = 'module_optimasi_onboarding_report_at';
+    private const KEY_REPORT_AT = 'module_onboarding_report_at';
+
+    /** The code 1.0.9 and earlier wrote under; kept only so those rows can be adopted. */
+    private const LEGACY_SETTING_CODE = 'module_optimasi_onboarding';
 
     // ------------------------------------------------------------------
     // Page
@@ -111,6 +144,11 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         if (!$this->user->hasPermission('access', self::ROUTE)) {
             return;
         }
+
+        // A file-only upgrade leaves the previous version's settings under the old code,
+        // where OpenCart's module list cannot see them. Done here rather than in
+        // install(), because replacing the files never calls install().
+        $this->adoptLegacySettings();
 
         $this->load->language('extension/optimasi_onboarding/module/onboarding');
 
@@ -187,7 +225,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         $data['show_advanced'] = $this->showAdvancedPanel();
 
         if ($data['show_advanced']) {
-            $data['api_url']         = $this->esc((string)$this->config->get(self::KEY_API_URL));
+            $data['api_url']         = $this->esc((string)($this->settingValue(self::KEY_API_URL) ?? ''));
             $data['default_api_url'] = self::DEFAULT_API_URL;
 
             // Named distinctly from the language key it is built from. OpenCart merges
@@ -240,7 +278,11 @@ class Onboarding extends \Opencart\System\Engine\Controller {
             return;
         }
 
-        $this->extendTimeLimit();
+        // The whole catalogue is measured now, so the budget is the store's
+        // execution time rather than a product count. Batched queries (CHUNK in
+        // the model) keep the query count linear; this is the ceiling on a slow
+        // shared host, not on how many products exist.
+        $this->extendTimeLimit(600);
 
         // `load->model()` returns VOID on OpenCart 4.1 — it returned the object on 4.0 —
         // and registers it on the registry instead. The registry property is therefore
@@ -249,7 +291,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         $this->load->model('extension/optimasi_onboarding/module/onboarding');
 
         try {
-            $result = $this->model_extension_optimasi_onboarding_module_onboarding->scan($this->languageId(), self::SCAN_CAP);
+            $result = $this->model_extension_optimasi_onboarding_module_onboarding->scan($this->languageId(), self::SCAN_ALL);
         } catch (\Exception $e) {
             // A failing QUERY arrives as an Exception from OpenCart's driver, and this
             // names it: the reason used to reach only the PHP log, while the page said
@@ -288,11 +330,16 @@ class Onboarding extends \Opencart\System\Engine\Controller {
             return;
         }
 
-        $this->extendTimeLimit();
+        $this->extendTimeLimit(600);
 
         $this->load->model('extension/optimasi_onboarding/module/onboarding');
 
-        $scan = $this->model_extension_optimasi_onboarding_module_onboarding->scan($this->languageId(), self::SCAN_CAP, true, self::VOICE_SAMPLE);
+        // The whole catalogue, not a slice: the voice sample is spread evenly over
+        // whatever is measured, so measuring only the first 1000 products would
+        // describe the tone of the oldest listings rather than of the catalogue.
+        // Text is still attached to VOICE_SAMPLE products only — the measurement
+        // grows with the store, the off-site payload does not.
+        $scan = $this->model_extension_optimasi_onboarding_module_onboarding->scan($this->languageId(), self::SCAN_ALL, true, self::VOICE_SAMPLE);
 
         // Brand voice is a statistical read of the descriptions, so only products
         // that actually carry text are worth sending. A tiny catalogue whose
@@ -338,6 +385,15 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
         $coverage = $this->jsonField('coverage');
 
+        if ($coverage === []) {
+            // Naming this here is the whole point: the service would answer "run the
+            // scan first", which is true of an empty payload and false of the flow the
+            // merchant is in, so the fault would be looked for in the wrong place.
+            $this->fail($this->language->get('error_payload_missing'), 'payload_missing');
+
+            return;
+        }
+
         $response = $this->api('POST', '/api/v1/preview/explainers', [
             'site_url'      => $this->siteUrl(),
             'features'      => $this->sanitiseFeatures($coverage['features'] ?? null),
@@ -365,6 +421,12 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         }
 
         $facts = $this->jsonField('facts');
+
+        if ($facts === []) {
+            $this->fail($this->language->get('error_payload_missing'), 'payload_missing');
+
+            return;
+        }
 
         $response = $this->api('POST', '/api/v1/preview/findings', [
             'site_url'      => $this->siteUrl(),
@@ -401,15 +463,36 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
         $this->extendTimeLimit();
 
+        $report = $this->reportPayload();
+
+        if ($report === []) {
+            // The report is the one payload big enough to travel as the request body, so
+            // an empty one means the page did not send it -- not that the store has
+            // nothing to report on. Saying so here is what stops step 3 answering "run
+            // the review first" to a merchant who has just run it.
+            $this->fail($this->language->get('error_payload_missing'), 'payload_missing');
+
+            return;
+        }
+
         $response = $this->api('POST', '/api/v1/preview/report/snapshot', [
             'site_url' => $this->siteUrl(),
             'platform' => 'opencart4',
-            'report'   => $this->reportPayload(),
+            'report'   => $report,
         ], 30);
 
         if ($response['error'] !== '' || (int)$response['code'] !== 200 || empty($response['data']['ok'])) {
-            // Deliberately quiet: the review UI keeps working, and step 3 will
-            // report that the report could not be loaded if nothing was stored.
+            // Still non-blocking -- the email card can create the request itself -- but
+            // no longer silent. Step 3 asks for a report this call failed to store, and
+            // "no report is available yet" would be answered by a scan that succeeded.
+            $message = $this->serviceMessage($response['data']);
+
+            if ((int)$response['code'] !== 200 && (int)$response['code'] !== 0) {
+                $message = trim($message . ' (Optimasi API HTTP ' . (int)$response['code'] . ')');
+            }
+
+            $this->fail($message !== '' ? $message : $this->language->get('error_snapshot_failed'), 'snapshot_failed');
+
             return;
         }
 
@@ -448,7 +531,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         // The stored token is the only authority. A token accepted from the request
         // would make this action a proxy for any report the caller can name, and there
         // is no UI that needs it — the page never has a token to send.
-        $token = $this->cleanToken((string)$this->config->get(self::KEY_TOKEN));
+        $token = $this->cleanToken((string)($this->settingValue(self::KEY_TOKEN) ?? ''));
 
         if ($token === '') {
             $this->fail($this->language->get('error_no_report'), 'no_report');
@@ -506,7 +589,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
             return;
         }
 
-        $token = $this->cleanToken((string)$this->config->get(self::KEY_TOKEN));
+        $token = $this->cleanToken((string)($this->settingValue(self::KEY_TOKEN) ?? ''));
 
         if ($token === '') {
             $this->plain('No report is available yet — run the review first.');
@@ -575,6 +658,16 @@ class Onboarding extends \Opencart\System\Engine\Controller {
             $body['request_id'] = $request_id;
         }
 
+        // Attaching an address to a lead that already exists does not need the report —
+        // that is what `request_id` is for. Anything else does, and an EMPTY report
+        // forwarded as `[]` is a shape the service refuses at validation, where the
+        // reason is a list the page cannot print. So it is refused here, by name.
+        if ($body['report'] === [] && $request_id === '') {
+            $this->fail($this->language->get('error_payload_missing'), 'payload_missing');
+
+            return;
+        }
+
         $response = $this->api('POST', '/api/v1/preview/email-report', $body, 20);
 
         $this->relay($response, $this->language->get('error_email_failed'), 'email_report_failed');
@@ -595,8 +688,10 @@ class Onboarding extends \Opencart\System\Engine\Controller {
 
         $this->extendTimeLimit();
 
-        // The stored token is the only authority here too — see report().
-        $token = $this->cleanToken((string)$this->config->get(self::KEY_TOKEN));
+        // The stored token is the only authority here too — see report(). Read from its
+        // row for the same reason: this is its own request, and `config` is a cache
+        // nothing in this controller fills for the AJAX actions.
+        $token = $this->cleanToken((string)($this->settingValue(self::KEY_TOKEN) ?? ''));
 
         if ($token === '') {
             $this->fail($this->language->get('error_contact_no_report'), 'no_report');
@@ -703,6 +798,59 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     // ------------------------------------------------------------------
 
     /**
+     * Move settings written under the old code prefix onto the one OpenCart reads.
+     *
+     * 1.0.9 and earlier wrote `module_optimasi_onboarding_*` under the code
+     * `module_optimasi_onboarding`. Both of OpenCart's own paths then miss them: the
+     * module list reads `module_onboarding_status` for the Enabled/Disabled column, and
+     * an uninstall deletes `code = 'module_onboarding'` — so on an upgraded store the
+     * column says Disabled and the merchant's endpoint, consent and report token would
+     * be orphaned rather than removed.
+     *
+     * Only keys that are MISSING are copied: a value saved under the new key is never
+     * overwritten by an older one. The old rows are then deleted, so each key has one
+     * home rather than two that can disagree. A store that never ran the old version has
+     * no rows here and this costs a single query.
+     */
+    private function adoptLegacySettings(): void {
+        $legacy = $this->db->query(
+            "SELECT `key`, `value` FROM `" . DB_PREFIX . "setting`"
+            . " WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::LEGACY_SETTING_CODE) . "'"
+        );
+
+        if (!$legacy->num_rows) {
+            return;
+        }
+
+        $renames = [
+            self::LEGACY_SETTING_CODE . '_status'               => self::KEY_STATUS,
+            self::LEGACY_SETTING_CODE . '_api_url'              => self::KEY_API_URL,
+            self::LEGACY_SETTING_CODE . '_consent_send_samples' => self::KEY_CONSENT,
+            self::LEGACY_SETTING_CODE . '_report_token'         => self::KEY_TOKEN,
+            self::LEGACY_SETTING_CODE . '_report_at'            => self::KEY_REPORT_AT,
+        ];
+
+        $missing = [];
+
+        foreach ($legacy->rows as $row) {
+            $key = $renames[(string)$row['key']] ?? null;
+
+            if ($key !== null && $this->config->get($key) === null) {
+                $missing[$key] = (string)$row['value'];
+            }
+        }
+
+        if ($missing) {
+            $this->writeSettings($missing);
+        }
+
+        $this->db->query(
+            "DELETE FROM `" . DB_PREFIX . "setting`"
+            . " WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::LEGACY_SETTING_CODE) . "'"
+        );
+    }
+
+    /**
      * Install: default the module to enabled.
      *
      * Nothing else to create — this extension has no tables and registers no
@@ -752,9 +900,16 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         // Removed directly rather than through the setting model's delete method:
         // a DELETE scoped to our own code is one statement with no behaviour to
         // verify, and it cannot take another extension's rows with it.
-        $this->db->query(
-            "DELETE FROM `" . DB_PREFIX . "setting` WHERE `code` = '" . $this->db->escape(self::SETTING_CODE) . "'"
-        );
+        //
+        // BOTH codes: an uninstall of a store that ran 1.0.9 or earlier also has to
+        // remove the rows written under the old prefix, or they stay behind for the next
+        // install to inherit — which is the same silence that made the module list say
+        // Disabled.
+        foreach ([self::SETTING_CODE, self::LEGACY_SETTING_CODE] as $code) {
+            $this->db->query(
+                "DELETE FROM `" . DB_PREFIX . "setting` WHERE `code` = '" . $this->db->escape($code) . "'"
+            );
+        }
     }
 
     // ------------------------------------------------------------------
@@ -785,7 +940,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     }
 
     private function consentRecorded(): bool {
-        return (int)$this->config->get(self::KEY_CONSENT) === 1;
+        return (int)($this->settingValue(self::KEY_CONSENT) ?? 0) === 1;
     }
 
     /**
@@ -804,8 +959,8 @@ class Onboarding extends \Opencart\System\Engine\Controller {
      */
     private function reportStateForJs(): array
     {
-        $token = (string)$this->config->get(self::KEY_TOKEN);
-        $at    = (int)$this->config->get(self::KEY_REPORT_AT);
+        $token = (string)($this->settingValue(self::KEY_TOKEN) ?? '');
+        $at    = (int)($this->settingValue(self::KEY_REPORT_AT) ?? 0);
 
         return [
             'has'          => $token !== '',
@@ -813,6 +968,34 @@ class Onboarding extends \Opencart\System\Engine\Controller {
             'with_date'    => $this->language->get('report_previous_with_date'),
             'without_date' => $this->language->get('report_previous_without_date'),
         ];
+    }
+
+    /**
+     * One of this module's settings, read from the row that holds it.
+     *
+     * `config` is a per-request cache, and every action here is its own request: a
+     * token written by `snapshot` is read back by `report`, which is a different call
+     * and a different process lifetime. Reading only the cache made step 3 answer
+     * "no report is available yet" while the token sat in the `setting` table — the
+     * write path was correct and the read path never asked the authority.
+     *
+     * `config` is still consulted as a fallback, for a caller that has loaded it (the
+     * page render does), so this cannot make a working store read differently.
+     */
+    private function settingValue(string $key): ?string {
+        $row = $this->db->query(
+            "SELECT `value` FROM `" . DB_PREFIX . "setting`"
+            . " WHERE `store_id` = '0' AND `code` = '" . $this->db->escape(self::SETTING_CODE) . "'"
+            . " AND `key` = '" . $this->db->escape($key) . "'"
+        );
+
+        if ($row->num_rows) {
+            return (string)$row->row['value'];
+        }
+
+        $cached = $this->config->get($key);
+
+        return $cached === null ? null : (string)$cached;
     }
 
     /**
@@ -865,21 +1048,24 @@ class Onboarding extends \Opencart\System\Engine\Controller {
         }
     }
 
+
     /**
      * Write one key while leaving its siblings as they are.
      *
      * The full set is written every time. Not because a single key would disturb the
-     * others — writeSettings() cannot — but because the values come from `config`, and
-     * writing only the key that changed would let a row that is missing (a partial
-     * install, a hand-edited database) stay missing forever.
+     * others — writeSettings() cannot — but because every value is read from its own
+     * row first, and writing only the key that changed would let a row that is missing
+     * (a partial install, a hand-edited database) stay missing forever. Reading the
+     * siblings from the table rather than from `config` is what makes this safe on a
+     * request that never loaded them.
      */
     private function persistSetting(string $key, $value): void {
         $values = [
-            self::KEY_STATUS    => (int)$this->config->get(self::KEY_STATUS),
-            self::KEY_API_URL   => (string)$this->config->get(self::KEY_API_URL),
-            self::KEY_CONSENT   => (int)$this->config->get(self::KEY_CONSENT),
-            self::KEY_TOKEN     => (string)$this->config->get(self::KEY_TOKEN),
-            self::KEY_REPORT_AT => (int)$this->config->get(self::KEY_REPORT_AT),
+            self::KEY_STATUS    => (int)($this->settingValue(self::KEY_STATUS) ?? 0),
+            self::KEY_API_URL   => (string)($this->settingValue(self::KEY_API_URL) ?? ''),
+            self::KEY_CONSENT   => (int)($this->settingValue(self::KEY_CONSENT) ?? 0),
+            self::KEY_TOKEN     => (string)($this->settingValue(self::KEY_TOKEN) ?? ''),
+            self::KEY_REPORT_AT => (int)($this->settingValue(self::KEY_REPORT_AT) ?? 0),
         ];
 
         $values[$key] = $value;
@@ -1051,21 +1237,30 @@ class Onboarding extends \Opencart\System\Engine\Controller {
             return;
         }
 
-        $message = '';
-
-        foreach (['message', 'detail', 'error'] as $field) {
-            if (isset($data[$field]) && is_string($data[$field]) && $data[$field] !== '') {
-                $message = $data[$field];
-
-                break;
-            }
-        }
+        $message = $this->serviceMessage($data);
 
         if ((int)$response['code'] !== 200 && (int)$response['code'] !== 0) {
             $message = trim($message . ' (Optimasi API HTTP ' . (int)$response['code'] . ')');
         }
 
         $this->fail($message !== '' ? $message : $fallback, $error);
+    }
+
+    /**
+     * The service's own explanation, when it gave one as plain text.
+     *
+     * Deliberately only plain text: a request-validation 422 carries its reason as a
+     * LIST of objects, and printing that as an array is how "Array" reaches a merchant.
+     * The endpoints this extension calls answer with a string.
+     */
+    private function serviceMessage(array $data): string {
+        foreach (['message', 'detail', 'error'] as $field) {
+            if (isset($data[$field]) && is_string($data[$field]) && $data[$field] !== '') {
+                return $data[$field];
+            }
+        }
+
+        return '';
     }
 
     // ------------------------------------------------------------------
@@ -1159,6 +1354,10 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     private function reportPayload(): array {
         $report = $this->jsonField('report');
 
+        if ($report === []) {
+            $report = $this->jsonBodyField('report');
+        }
+
         if (isset($report['products']) && is_array($report['products'])) {
             foreach ($report['products'] as $index => $product) {
                 if (is_array($product)) {
@@ -1171,14 +1370,25 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     }
 
     /**
-     * One JSON field from the request body.
+     * One structured field from the request body, either shape.
      *
-     * Decoded with a depth limit and a size limit, and anything that is not an array
-     * becomes an empty one — a malformed body should produce an empty report, not a
-     * half-applied one.
+     * The page now posts these as nested form fields, which PHP hands over already
+     * decoded. A JSON string is still accepted, because that is what older pages
+     * send and the controller must not be the half of a deploy that breaks first.
+     *
+     * Anything else becomes an empty array with a depth limit and a size limit — a
+     * malformed body should produce an empty report, not a half-applied one. An
+     * empty result is never sent on to the service: the callers refuse it by name,
+     * because "empty" here means the page did not send what it had.
      */
     private function jsonField(string $key): array {
-        $raw = (string)($this->request->post[$key] ?? '');
+        $raw = $this->request->post[$key] ?? null;
+
+        if (is_array($raw)) {
+            return $raw;
+        }
+
+        $raw = (string)($raw ?? '');
 
         if ($raw === '' || strlen($raw) > 8388608) {
             return [];
@@ -1192,6 +1402,42 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     /** A sub-array of a decoded body, or [] — never null, so callers do not repeat the check. */
     private function mapBlock($value): array {
         return is_array($value) ? $value : [];
+    }
+
+    /**
+     * The raw request body.
+     *
+     * Protected rather than private so a test can stand in for it: `php://input` is not
+     * something a CLI suite can set, and this is the seam that decides whether the one
+     * large payload arrived.
+     */
+    protected function rawBody(): string {
+        return (string)file_get_contents('php://input');
+    }
+
+    /**
+     * One field from a JSON request body.
+     *
+     * The report is the only payload too large to be a form field. A full catalogue is
+     * up to a thousand product rows — past `max_input_vars` as nested fields, and as one
+     * string it depends on whatever single-value ceiling a host sets. The raw body has
+     * neither limit: PHP hands it over unparsed, exactly as this controller sends it on
+     * to the service.
+     */
+    private function jsonBodyField(string $key): array {
+        $raw = $this->rawBody();
+
+        if ($raw === '' || strlen($raw) > 8388608) {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true, 64);
+
+        if (!is_array($decoded) || !is_array($decoded[$key] ?? null)) {
+            return [];
+        }
+
+        return $decoded[$key];
     }
 
     /**
@@ -1360,7 +1606,7 @@ class Onboarding extends \Opencart\System\Engine\Controller {
     /**
      * Give the request room for a long step.
      *
-     * Called only by the actions that do the work — a scan of 1,000 products, or a
+     * Called only by the actions that do the work — a scan of the whole catalogue, or a
      * call to the review service that is allowed 30–45 seconds on a host whose
      * default `max_execution_time` is often exactly that. `save` does neither, so it
      * does not raise the limit: a limit raised for no reason is a limit that hides

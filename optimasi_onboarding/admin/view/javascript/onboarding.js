@@ -53,16 +53,20 @@
     // is nothing here to keep. Every later step uses the stored one server-side.
     let reportRequestId = null;
     let snapshotSent = false;
+    /** Why the email-less capture failed, if it did — step 3 reports the cause, not the symptom. */
+    let snapshotError = '';
     // The rendered report document, kept so Print does not need a second round-trip.
     // There is no token variable: the report token never leaves the admin, so every
     // later step falls back to the stored one server-side.
     let reportDocHtml = '';
 
-    // Scan cap: review the first SCAN_CAP published products — enough to judge
-    // the state of the store without shipping an unbounded payload (Step 2 and
-    // Step 3 send per-product description text to the Optimasi servers).
-    const SCAN_CAP = 1000;
-    // Per-product metric rows that travel with the emailed report (≤ SCAN_CAP).
+    // The scan measures the whole published catalogue. Step 1 runs against the
+    // store's own database and sends no product text, so there is no product-count
+    // budget to apply here — only step 2 ships text, and that is a fixed sample
+    // (VOICE_SAMPLE) on the server.
+    //
+    // REPORT_MAX_PRODUCTS is a transport/render budget for the report document, not
+    // a scan budget: the audit covers every product either way.
     const REPORT_MAX_PRODUCTS = 1000;
     // "Show the evidence" table page size.
     const EVIDENCE_PAGE = 50;
@@ -92,21 +96,26 @@
     });
 
     // ------------------------------------------------------------------
-    // Step 1 — scan up to SCAN_CAP products (local, nothing leaves the site)
+    // Step 1 — scan every published product (local, nothing leaves the site)
     // ------------------------------------------------------------------
     $run.on('click', function (e) {
         e.preventDefault();
+        const startedAt = nowMs();
         runStep(1, 'scan', null,
             'Scanning your products…',
-            'Reading metadata for up to the first ' + SCAN_CAP + ' published products. Nothing is sent to Optimasi in this step.')
+            'Reading metadata for every published product from your store’s own database — no pages are crawled, which is why this is quick. Nothing is sent to Optimasi in this step.')
             .then(function (res) {
                 if (res.ok) {
                     scanData = res.data;
-                    renderStep1(res.data);
+                    renderStep1(res.data, nowMs() - startedAt);
                     completeStep(1);
                 }
             });
     });
+
+    function nowMs() {
+        return (window.performance && window.performance.now) ? window.performance.now() : Date.now();
+    }
 
     // ------------------------------------------------------------------
     // Step 2 — analyse brand voice (server review analysis, no key)
@@ -242,12 +251,21 @@
     function maybeSendSnapshot() {
         if (snapshotSent || !scanData) { return Promise.resolve(null); }
         snapshotSent = true;  // one snapshot per review run
-        return post('snapshot', { report: JSON.stringify(buildReport('')) })
+        // The report goes in the request body: it is the one payload big enough that
+        // form parsing is the wrong transport for it.
+        return post('snapshot', { report: buildReport('') }, { raw: true })
             .then(function (data) {
                 if (data && data.request_id) { reportRequestId = data.request_id; }
+                snapshotError = '';
                 return data || null;
             })
-            .catch(function () { return null; /* best-effort: email_report still works */ });
+            .catch(function (err) {
+                // Still non-blocking — the email card can create the request itself —
+                // but the reason is kept. Without it step 3 can only say "no report
+                // yet", which is true of the consequence and false of the cause.
+                snapshotError = (err && err.message) ? String(err.message) : '';
+                return null;
+            });
     }
 
     // ------------------------------------------------------------------
@@ -314,7 +332,11 @@
             })
             .catch(function (err) {
                 setStepState(3, 'Unavailable');
-                reportDocStatus((err && err.message) ? err.message : 'Your report could not be loaded right now.');
+                // The capture failing is the CAUSE of "no report yet", and it is the one
+                // thing this step used to hide. Prefer it when there is one.
+                reportDocStatus(snapshotError || ((err && err.message)
+                    ? err.message
+                    : 'Your report could not be loaded right now.'));
             });
     }
 
@@ -415,6 +437,7 @@
     // ------------------------------------------------------------------
     const $contactForm = $('#optimasi-contact-form');
     const $contactNumberWrap = $('#optimasi-contact-number-wrap');
+    const $contactEmailWrap = $('#optimasi-contact-email-wrap');
 
     function contactChannel() {
         return String($contactForm.find('input[name=optimasi_channel]:checked').val() || '');
@@ -422,7 +445,12 @@
 
     function syncContactNumberField() {
         const channel = contactChannel();
-        $contactNumberWrap.toggleClass('is-hidden', !(channel === 'whatsapp' || channel === 'viber'));
+        const byNumber = (channel === 'whatsapp' || channel === 'viber');
+        $contactNumberWrap.toggleClass('is-hidden', !byNumber);
+        // A number IS the way to reach them, so asking for an address as well is noise
+        // on the two channels that do not use one. Hidden, not required-and-blank: the
+        // value is left alone, so switching back restores what was typed.
+        $contactEmailWrap.toggleClass('is-hidden', byNumber);
     }
 
     $contactForm.on('change', 'input[name=optimasi_channel]', syncContactNumberField);
@@ -439,11 +467,15 @@
         }
         $btn.prop('disabled', true);
         $spin.addClass('is-active');
+        // A hidden field still holds its value, so a half-typed address from before the
+        // visitor switched to a number channel must not be sent: it would be refused for
+        // being invalid and the message would point at a field nobody can see.
+        const byNumber = (channel === 'whatsapp' || channel === 'viber');
         post('contact', {
             channel: channel,
             number: String($('#optimasi-contact-number').val() || ''),
             role: String($('#optimasi-contact-role').val() || ''),
-            email: String($('#optimasi-contact-email').val() || ''),
+            email: byNumber ? '' : String($('#optimasi-contact-email').val() || ''),
         })
             .then(function (data) {
                 const label = (data && data.channel_label) ? String(data.channel_label) : 'your preferred channel';
@@ -521,31 +553,89 @@
             });
     });
 
-    function catalogMetrics() {
-        const products = (scanData && scanData.products) || [];
-        return products.slice(0, REPORT_MAX_PRODUCTS).map(function (p) {
-            return {
-                product_id: p.product_id,
-                title: String(p.title || '').slice(0, 120),
-                chars_short_desc: p.chars_short_desc || 0,
-                chars_long_desc: p.chars_long_desc || 0,
-                image_count: p.image_count || 0,
-                review_count: p.review_count || 0,
-                average_rating: typeof p.average_rating === 'number' ? p.average_rating : 0,
-                has_brand: !!p.has_brand,
-                brand_terms: Array.isArray(p.brand_terms) ? p.brand_terms.slice(0, 3) : [],
-                features: p.features || {},
-                // Evidence-table extras the Full report renders (words estimate,
-                // weakest-categories, category name). NOT `edit_url`: on OpenCart that
-                // URL carries the admin user_token, and this object is posted to
-                // Optimasi — it would put a live admin credential in the stored
-                // snapshot, the PDF and any emailed copy of the report.
-                words_long_desc: p.words_long_desc || 0,
-                category: (Array.isArray(p.categories) && p.categories[0])
-                    ? String(p.categories[0]).slice(0, 80)
-                    : String(p.category || '').slice(0, 80),
-            };
+    function allProducts() {
+        return (scanData && scanData.products) || [];
+    }
+
+    /**
+     * One product row, in the shape the report reads.
+     *
+     * The ONE projection: the snapshot and the findings narrative both send product
+     * rows, and two copies of this shape is how they start disagreeing.
+     *
+     * NOT `edit_url`: on OpenCart that URL carries the admin `user_token`, and these
+     * objects are posted to Optimasi — it would put a live admin credential in the
+     * stored snapshot, the PDF and any emailed copy of the report.
+     */
+    function metricRow(p) {
+        return {
+            product_id: p.product_id,
+            title: String(p.title || '').slice(0, 120),
+            chars_short_desc: p.chars_short_desc || 0,
+            chars_long_desc: p.chars_long_desc || 0,
+            image_count: p.image_count || 0,
+            review_count: p.review_count || 0,
+            average_rating: typeof p.average_rating === 'number' ? p.average_rating : 0,
+            has_brand: !!p.has_brand,
+            brand_terms: Array.isArray(p.brand_terms) ? p.brand_terms.slice(0, 3) : [],
+            features: p.features || {},
+            // Evidence-table extras the Full report renders (words estimate,
+            // weakest-categories, category name).
+            words_long_desc: p.words_long_desc || 0,
+            category: (Array.isArray(p.categories) && p.categories[0])
+                ? String(p.categories[0]).slice(0, 80)
+                : String(p.category || '').slice(0, 80),
+        };
+    }
+
+    /**
+     * The product rows the snapshot carries, ranked by what is missing.
+     *
+     * DELIBERATELY BOUNDED. The whole catalogue used to go in the request body, which
+     * on a thousand-product store is a few hundred kilobytes — past the request-body
+     * ceiling a shared host sets, so the capture was answered with an HTML `400`
+     * before any of it reached OpenCart. The report names a handful of products, so it
+     * gets the worst ones; the whole-catalogue figures travel as aggregates beside it.
+     */
+    function snapshotProductRows() {
+        return allProducts()
+            .slice()
+            .sort(function (a, b) { return productMissingCount(b) - productMissingCount(a); })
+            .slice(0, 40)
+            .map(metricRow);
+    }
+
+    /** The per-product AI-search-readiness rubric, aggregated to bounded counts. */
+    function aiReadinessSummary() {
+        const readiness = (voiceResult && voiceResult.ai_readiness) || {};
+        const rows = readiness.per_product || [];
+        let good = 0, weak = 0, missing = 0;
+
+        rows.forEach(function (r) {
+            const s = r.ai_ready;
+            if (s === 'good') good++;
+            else if (s === 'weak') weak++;
+            else missing++;
         });
+
+        return rows.length > 0 ? {
+            good: good, weak: weak, missing: missing, total: rows.length,
+            summary: readiness.summary || '',
+        } : {};
+    }
+
+    /** The whole-catalogue health chips, in the names the service reads. */
+    function healthSummary() {
+        const h = healthCounts(allProducts());
+
+        return {
+            detailed: h.detailed, thin: h.thin, no_images: h.noImages,
+            no_reviews: h.noReviews, no_brand: h.noBrand,
+        };
+    }
+
+    function catalogMetrics() {
+        return allProducts().slice(0, REPORT_MAX_PRODUCTS).map(metricRow);
     }
 
     function buildReport(email) {
@@ -567,7 +657,19 @@
             authority: (scanData && scanData.authority) || null,
             // Whole-catalog per-product metrics — powers the comprehensive Full
             // content report (the LLM can name real products and cite real stats).
-            products: catalogMetrics(),
+            //
+            // BOUNDED BY RANK, not by catalogue order: see snapshotProductRows().
+            // The four blocks after it are computed across EVERY product, so a short
+            // row list can never be read as a short catalogue.
+            products: snapshotProductRows(),
+            health: healthSummary(),
+            categories: weakestCategoryRows(allProducts()).map(function (r) {
+                return { name: r.name, total: r.total, pct: r.pct };
+            }),
+            worst: worstProductRows(allProducts(), 5).map(function (p) {
+                return { title: p.title, missing: p.missing };
+            }),
+            ai_readiness: aiReadinessSummary(),
             brand_voice: {
                 status: brandVoice.status || '',
                 consistency_score: typeof brandVoice.consistency_score === 'number' ? brandVoice.consistency_score : null,
@@ -609,7 +711,7 @@
     // ------------------------------------------------------------------
     // AJAX helper (resolves with response.data on success)
     // ------------------------------------------------------------------
-    function post(subaction, extra) {
+    function post(subaction, extra, options) {
         const url = (window.optimasiAudit && optimasiAudit.ajax && optimasiAudit.ajax[subaction])
             ? optimasiAudit.ajax[subaction]
             : '';
@@ -620,12 +722,23 @@
             missing.code = 'no_route';
             return Promise.reject(missing);
         }
+        // `raw` puts the payload in the request body instead of form fields. The
+        // report is the one payload big enough to need it: a full catalogue is up to a
+        // thousand product rows, which as nested fields is past `max_input_vars` and
+        // as one string depends on a host's single-value ceiling.
+        const raw = !!(options && options.raw);
+        const request = {
+            url: url,
+            type: 'POST',
+            dataType: 'json',
+            data: raw ? JSON.stringify(extra || {}) : Object.assign({}, extra || {}),
+        };
+        if (raw) {
+            request.contentType = 'application/json; charset=utf-8';
+            request.processData = false;
+        }
         return new Promise(function (resolve, reject) {
-            $.ajax({
-                url: url,
-                type: 'POST',
-                dataType: 'json',
-                data: Object.assign({}, extra || {}),
+            $.ajax(Object.assign({}, request, {
                 success: function (response) {
                     if (response && response.success) {
                         resolve(response.data);
@@ -667,7 +780,7 @@
                     err.code = code;
                     reject(err);
                 },
-            });
+            }));
         });
     }
 
@@ -732,7 +845,36 @@
     // ------------------------------------------------------------------
     // Step 1 render — factual coverage + evidence + plain-language summary
     // ------------------------------------------------------------------
-    function renderStep1(data) {
+    /**
+     * What the scan actually did, stated as counts and a duration.
+     *
+     * Step 1 is a local read — one batched query per content block against the
+     * store's own tables — so a small catalogue genuinely finishes in about a
+     * second, and a number that small reads as "it did not really look" unless
+     * the page says what it did. Saying the work (N products x M blocks) next to
+     * the time turns a suspiciously fast result into a measurement.
+     *
+     * Deliberately NOT padded with an artificial minimum duration: making a fast
+     * scan feel slow is the one dishonest fix, and it would break the moment the
+     * catalogue is large.
+     */
+    function scanReceipt(total, checks, blocks, elapsedMs) {
+        const reads = 'read from your store’s own database' +
+            (elapsedMs !== null && isFinite(elapsedMs) && elapsedMs >= 0
+                ? ' in <strong>' + formatElapsed(elapsedMs) + '</strong>'
+                : '') +
+            ', with nothing crawled and nothing sent off-site.';
+        return '<p class="optimasi-report-meta">' +
+            '<strong>' + checks + '</strong> content checks across <strong>' + blocks +
+            '</strong> blocks ' + reads + '</p>';
+    }
+
+    function formatElapsed(ms) {
+        if (ms < 1000) return Math.max(1, Math.round(ms)) + ' ms';
+        return (ms / 1000).toFixed(1) + ' s';
+    }
+
+    function renderStep1(data, elapsedMs) {
         const $box = $('#optimasi-result-1');
         const products = data.products || [];
         if (!products.length) {
@@ -776,6 +918,14 @@
             '<h3 class="optimasi-report-title">Sales readiness</h3>' +
             '<p class="optimasi-report-meta">Audited <strong>' + total + '</strong> published products on ' +
             escapeHtml(auditedAt) + ' — how ready each one is to help shoppers find, trust and buy.</p>' +
+            scanReceipt(
+                total,
+                Object.keys(data.features || {}).reduce(function (n, key) {
+                    return n + (parseInt((data.features[key] || {}).total, 10) || 0);
+                }, 0),
+                Object.keys(data.features || {}).length,
+                (typeof elapsedMs === 'number') ? elapsedMs : null
+            ) +
             '</div>' +
             '<div class="optimasi-score-block">' +
             '<div class="optimasi-score-badge ' + scoreClass + '" style="--pct:' + completeness +
@@ -1108,11 +1258,9 @@
             const f = scanData.features[k];
             if (f && f.total) features[k] = { pass: f.pass, total: f.total };
         });
-        const h = healthCounts(products);
-        const health = {
-            detailed: h.detailed, thin: h.thin, no_images: h.noImages,
-            no_reviews: h.noReviews, no_brand: h.noBrand,
-        };
+        // The whole-catalogue chips, from the one definition — the snapshot sends the
+        // same object, and two copies of it is how the two payloads start disagreeing.
+        const health = healthSummary();
         const categories = weakestCategoryRows(products).map(function (r) {
             return { name: r.name, total: r.total, pct: r.pct };
         });
@@ -1121,22 +1269,10 @@
         });
         const voice = (voiceResult && voiceResult.brand_voice) || {};
         const dups = (voiceResult && voiceResult.duplicates) || {};
-        const readiness = (voiceResult && voiceResult.ai_readiness) || {};
         // Aggregate the per-product AI-search-readiness rubric (reassessed
         // metric: structured main description + direct answers — not short-desc
         // length). Bounded counts only; the explainer stays server-side.
-        let aiGood = 0, aiWeak = 0, aiMissing = 0;
-        (readiness.per_product || []).forEach(function (r) {
-            const s = r.ai_ready;
-            if (s === 'good') aiGood++;
-            else if (s === 'weak') aiWeak++;
-            else aiMissing++;
-        });
-        const aiTotal = (readiness.per_product || []).length;
-        const aiReadiness = aiTotal > 0 ? {
-            good: aiGood, weak: aiWeak, missing: aiMissing, total: aiTotal,
-            summary: readiness.summary || '',
-        } : {};
+        const aiReadiness = aiReadinessSummary();
         return {
             scanned_total: scanData.total || products.length,
             completeness: scanData.completeness || 0,
@@ -1192,7 +1328,10 @@
         } else {
             $box.append(panel);
         }
-        post('findings', { facts: JSON.stringify(payload) })
+        // Posted as nested fields, not as one JSON string: a single large value is
+        // the easiest thing for a host or a WAF to drop, and when it went missing
+        // the server could not tell an unsent payload from an empty one.
+        post('findings', { facts: payload })
             .then(function (data) {
                 const text = (data && data.text) ? data.text : '';
                 if (text) {
@@ -1417,7 +1556,9 @@
             '<p class="optimasi-status-sub">Optimasi is checking each content block and attaching real industry benchmarks to your report. This usually takes a few seconds.</p>' +
             '</div>'
         );
-        post('explainers', { coverage: JSON.stringify(payload) })
+        // Nested fields again — see loadFindings(). A dropped single value here read
+        // as "no coverage" on the server, which is a different fault entirely.
+        post('explainers', { coverage: payload })
             .then(function (data) {
                 const cards = (data && data.explainers) ? data.explainers : null;
                 if (cards) { renderExplainers(cards); return; }

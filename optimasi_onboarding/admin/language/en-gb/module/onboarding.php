@@ -27,7 +27,7 @@ $_['error_permission']    = 'Warning: You do not have permission to modify the O
 
 // Step 1 — scan (local, nothing leaves the store).
 $_['step1_title']         = 'Scan your products';
-$_['step1_desc']          = 'We measure up to the first 1,000 of your published products right on your store — description length, image count, reviews, and which content blocks each product has. Nothing is sent to Optimasi during this step.';
+$_['step1_desc']          = 'We measure every one of your published products right on your store — description length, image count, reviews, and which content blocks each product has. Nothing is sent to Optimasi during this step.';
 $_['step1_button']        = 'Scan my products';
 
 // Step 2 — brand voice (the only step that sends description text).
@@ -38,7 +38,7 @@ $_['step2_consent']       = 'I agree to send a short sample of my product descri
 
 // Step 3 — the report.
 $_['step3_title']         = 'Your Sales-Ready Standard Inspection Report';
-$_['step3_desc']          = 'Your full four-page report — key findings, results by category and a prioritised optimisation roadmap. Print or save it as a PDF, or open it in a new tab.';
+$_['step3_desc']          = 'Your Sales-Ready Standard Inspection Report — four pages: key findings, results by category and a prioritised optimisation roadmap. Read it here or open it in a new tab. The longer executive report, 10–11 pages, is emailed to you from the card below.';
 $_['step3_open']          = 'Open or print in a new tab';
 $_['step3_frame_title']   = 'Sales-Ready Standard Inspection Report';
 // Provenance for a report kept from an earlier review. The date is substituted by the
@@ -53,8 +53,8 @@ $_['step4_desc']          = 'Watch a video explaining how Optimasi can help your
 $_['step4_button']        = 'See how it works';
 
 // Email card (revealed with the report).
-$_['text_email_heading']       = 'Email the full report';
-$_['text_email_desc']          = 'The full report is the document worth keeping, and it is not the four-page summary on this page. It opens with an executive summary you can forward to whoever signs off on content, then the consultant\'s read: what is working, where the opportunity is, what the brand-voice and duplicate-copy analysis found, and the recommended plan, set out in full rather than summarised.';
+$_['text_email_heading']       = 'Email me a comprehensive Executive Store Analysis report for deeper insights';
+$_['text_email_desc']          = 'A management-ready PDF you can keep and forward: your sales-readiness score, the key findings by category, the significant content gaps and the prioritised optimisation roadmap, written for whoever signs off on content.';
 $_['text_email_how']           = 'Enter your email and we will send you a confirmation link, then the PDF. No spam, and you can unsubscribe at any time.';
 $_['text_email_placeholder']   = 'you@yourstore.com';
 $_['text_email_button']        = 'Email me the full report';
@@ -80,7 +80,7 @@ $_['text_channel_google_meet'] = 'Google Meet';
 $_['text_channel_ms_teams']    = 'Microsoft Teams call';
 $_['text_channel_whatsapp']    = 'WhatsApp';
 $_['text_channel_viber']       = 'Viber';
-$_['text_channel_email']       = 'Email is fine — just send me a link';
+$_['text_channel_email']       = 'Email is fine — send me a message';
 
 // Roles.
 $_['text_role_agency']                 = 'An agency';
@@ -112,6 +112,12 @@ $_['error_unreachable']         = 'Could not reach the Optimasi service.';
 $_['error_analyse_failed']      = 'Could not analyse your brand voice.';
 $_['error_explainers_failed']   = 'Could not load the content explainers.';
 $_['error_findings_failed']     = 'Could not write the audit findings.';
+// The two report payloads are built by the page from the scan it has just run, so an
+// empty one means the page did not send what it had — not that the store has nothing to
+// measure. Saying "run the scan first" to a merchant who has just run it is what sent us
+// looking at the wrong half of the flow.
+$_['error_payload_missing']     = 'The review data did not reach the server — reload the page and run the scan again.';
+$_['error_snapshot_failed']     = 'Your review could not be stored, so the report is not ready yet.';
 $_['error_report_unavailable']  = 'Your report could not be loaded right now.';
 $_['error_no_report']           = 'No report is available yet — run the review first.';
 $_['error_contact_no_report']   = 'Run the review first — there is no report to talk about yet.';
